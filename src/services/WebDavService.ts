@@ -1,0 +1,405 @@
+import { Buffer } from 'buffer'
+import dayjs from 'dayjs'
+import { File } from 'expo-file-system'
+import * as LegacyFileSystem from 'expo-file-system/legacy'
+import { XMLParser } from 'fast-xml-parser'
+
+import { DEFAULT_BACKUP_STORAGE } from '@/constants/storage'
+import { storage } from '@/utils'
+
+import { backup } from './BackupService'
+import { loggerService } from './LoggerService'
+
+const logger = loggerService.withContext('WebDavService')
+
+export const WEBDAV_CONFIG_STORAGE_KEY = 'webdav_config_v1'
+export const DEFAULT_WEBDAV_PATH = '/CherryStudio'
+
+export interface WebDavConfig {
+  host: string
+  user: string
+  password: string
+  path: string
+}
+
+export interface WebDavBackupFile {
+  fileName: string
+  size: number
+  modifiedTime: string
+}
+
+type WebDavPropstat = {
+  status?: string
+  prop?: {
+    displayname?: string
+    getcontentlength?: string | number
+    getlastmodified?: string
+    resourcetype?: {
+      collection?: unknown
+    }
+  }
+}
+
+type WebDavResponseNode = {
+  href?: string
+  propstat?: WebDavPropstat | WebDavPropstat[]
+}
+
+const propfindParser = new XMLParser({
+  ignoreAttributes: false,
+  removeNSPrefix: true,
+  trimValues: true
+})
+
+function toArray<T>(value: T | T[] | undefined | null): T[] {
+  if (!value) return []
+  return Array.isArray(value) ? value : [value]
+}
+
+function decodeHrefSegment(value: string) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+function sanitizeErrorMessage(value: string) {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function normalizeWebDavPath(path?: string) {
+  const trimmedPath = path?.trim() ?? ''
+
+  if (!trimmedPath) {
+    return DEFAULT_WEBDAV_PATH
+  }
+
+  if (/^\/+$/.test(trimmedPath)) {
+    return '/'
+  }
+
+  const normalized = trimmedPath.replace(/^\/+/, '').replace(/\/+$/, '')
+  return normalized ? `/${normalized}` : DEFAULT_WEBDAV_PATH
+}
+
+export function normalizeWebDavConfig(config: Partial<WebDavConfig>): WebDavConfig {
+  return {
+    host: config.host?.trim() ?? '',
+    user: config.user?.trim() ?? '',
+    password: config.password ?? '',
+    path: normalizeWebDavPath(config.path)
+  }
+}
+
+export function hasValidWebDavConfig(config: Partial<WebDavConfig>) {
+  const normalized = normalizeWebDavConfig(config)
+  return Boolean(normalized.host && normalized.user && normalized.password)
+}
+
+export function getWebDavConfig(): WebDavConfig {
+  const rawConfig = storage.getString(WEBDAV_CONFIG_STORAGE_KEY)
+
+  if (!rawConfig) {
+    return normalizeWebDavConfig({})
+  }
+
+  try {
+    return normalizeWebDavConfig(JSON.parse(rawConfig))
+  } catch (error) {
+    logger.warn('Failed to parse stored WebDAV config', error as Error)
+    return normalizeWebDavConfig({})
+  }
+}
+
+export function saveWebDavConfig(config: Partial<WebDavConfig>) {
+  const normalized = normalizeWebDavConfig(config)
+  storage.set(WEBDAV_CONFIG_STORAGE_KEY, JSON.stringify(normalized))
+  return normalized
+}
+
+export function parseWebDavBackupFiles(xml: string): WebDavBackupFile[] {
+  const parsed = propfindParser.parse(xml) as {
+    multistatus?: {
+      response?: WebDavResponseNode | WebDavResponseNode[]
+    }
+  }
+  const responses = toArray(parsed.multistatus?.response)
+
+  return responses
+    .map(response => {
+      const propstats = toArray(response.propstat)
+      const successfulPropstat = propstats.find(propstat => propstat.status?.includes(' 200 ')) ?? propstats[0]
+      const props = successfulPropstat?.prop
+
+      if (!props) {
+        return null
+      }
+
+      const hrefSegments = response.href?.split('/').filter(Boolean) ?? []
+      const fallbackName = hrefSegments.length > 0 ? decodeHrefSegment(hrefSegments[hrefSegments.length - 1]) : ''
+      const fileName = props.displayname || fallbackName
+      const isCollection = props.resourcetype && 'collection' in props.resourcetype
+
+      if (!fileName || isCollection || !fileName.endsWith('.zip')) {
+        return null
+      }
+
+      return {
+        fileName,
+        size: Number(props.getcontentlength || 0),
+        modifiedTime: props.getlastmodified || ''
+      } satisfies WebDavBackupFile
+    })
+    .filter((file): file is WebDavBackupFile => file !== null)
+    .sort((left, right) => {
+      const leftTime = left.modifiedTime ? new Date(left.modifiedTime).getTime() : 0
+      const rightTime = right.modifiedTime ? new Date(right.modifiedTime).getTime() : 0
+      return rightTime - leftTime
+    })
+}
+
+function encodePathSegments(path: string) {
+  return path
+    .split('/')
+    .filter(Boolean)
+    .map(segment => encodeURIComponent(segment))
+    .join('/')
+}
+
+function createBasicAuthHeader(config: WebDavConfig) {
+  return `Basic ${Buffer.from(`${config.user}:${config.password}`, 'utf8').toString('base64')}`
+}
+
+function createWebDavUrl(config: WebDavConfig, fileName?: string) {
+  const baseHost = config.host.replace(/\/+$/, '')
+  const pathSegments = encodePathSegments(config.path)
+  const fileSegment = fileName ? encodeURIComponent(fileName) : ''
+
+  if (!pathSegments && !fileSegment) {
+    return baseHost
+  }
+
+  if (!pathSegments) {
+    return `${baseHost}/${fileSegment}`
+  }
+
+  if (!fileSegment) {
+    return `${baseHost}/${pathSegments}`
+  }
+
+  return `${baseHost}/${pathSegments}/${fileSegment}`
+}
+
+async function readResponseError(response: Response) {
+  try {
+    const text = await response.text()
+    const sanitized = sanitizeErrorMessage(text)
+    return sanitized || `HTTP ${response.status}`
+  } catch {
+    return `HTTP ${response.status}`
+  }
+}
+
+async function webDavRequest(
+  config: WebDavConfig,
+  fileName: string | undefined,
+  init: globalThis.RequestInit,
+  expectedStatuses: number[]
+) {
+  const response = await fetch(createWebDavUrl(config, fileName), {
+    ...init,
+    headers: {
+      Authorization: createBasicAuthHeader(config),
+      ...init.headers
+    }
+  })
+
+  if (!expectedStatuses.includes(response.status)) {
+    const message = await readResponseError(response)
+    throw new Error(`HTTP ${response.status}${message ? `: ${message}` : ''}`)
+  }
+
+  return response
+}
+
+async function ensureBackupDirectoryExists(config: WebDavConfig) {
+  const host = config.host.replace(/\/+$/, '')
+  const pathSegments = normalizeWebDavPath(config.path).split('/').filter(Boolean)
+
+  if (pathSegments.length === 0) {
+    return
+  }
+
+  let currentPath = ''
+  for (const segment of pathSegments) {
+    currentPath += `/${segment}`
+    const response = await fetch(`${host}/${encodePathSegments(currentPath)}`, {
+      method: 'MKCOL',
+      headers: {
+        Authorization: createBasicAuthHeader(config)
+      }
+    })
+
+    if ([200, 201, 204, 301, 302, 405].includes(response.status)) {
+      continue
+    }
+
+    throw new Error(await readResponseError(response))
+  }
+}
+
+function validateConfig(config: Partial<WebDavConfig>) {
+  const normalized = normalizeWebDavConfig(config)
+
+  if (!hasValidWebDavConfig(normalized)) {
+    throw new Error('INVALID_CONFIG')
+  }
+
+  try {
+    new URL(normalized.host)
+  } catch {
+    throw new Error('INVALID_HOST')
+  }
+
+  return normalized
+}
+
+export async function checkWebDavConnection(config: Partial<WebDavConfig>) {
+  const normalized = validateConfig(config)
+  await ensureBackupDirectoryExists(normalized)
+  await webDavRequest(
+    normalized,
+    undefined,
+    {
+      method: 'PROPFIND',
+      headers: {
+        Depth: '0',
+        'Content-Type': 'application/xml; charset=utf-8'
+      },
+      body: `<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop>
+    <d:displayname />
+  </d:prop>
+</d:propfind>`
+    },
+    [207]
+  )
+
+  return normalized
+}
+
+export async function listWebDavBackupFiles(config: Partial<WebDavConfig>) {
+  const normalized = validateConfig(config)
+
+  try {
+    const response = await webDavRequest(
+      normalized,
+      undefined,
+      {
+        method: 'PROPFIND',
+        headers: {
+          Depth: '1',
+          'Content-Type': 'application/xml; charset=utf-8'
+        },
+        body: `<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop>
+    <d:displayname />
+    <d:getcontentlength />
+    <d:getlastmodified />
+    <d:resourcetype />
+  </d:prop>
+</d:propfind>`
+      },
+      [207]
+    )
+
+    return parseWebDavBackupFiles(await response.text())
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('HTTP 404')) {
+      return []
+    }
+
+    throw error
+  }
+}
+
+export async function backupToWebDav(config: Partial<WebDavConfig>) {
+  const normalized = validateConfig(config)
+  await ensureBackupDirectoryExists(normalized)
+
+  const backupUri = await backup()
+  const backupFile = new File(backupUri)
+  const fileName = backupUri.split('/').pop() || `cherry-studio.${dayjs().format('YYYYMMDDHHmm')}.zip`
+
+  try {
+    const bytes = await backupFile.bytes()
+
+    await webDavRequest(
+      normalized,
+      fileName,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/zip'
+        },
+        body: bytes
+      },
+      [200, 201, 204]
+    )
+
+    return {
+      fileName,
+      size: backupFile.size || bytes.byteLength,
+      modifiedTime: new Date().toISOString()
+    } satisfies WebDavBackupFile
+  } finally {
+    try {
+      if (backupFile.exists) {
+        backupFile.delete()
+      }
+    } catch (error) {
+      logger.warn('Failed to cleanup temporary WebDAV backup file', error as Error)
+    }
+  }
+}
+
+export async function downloadWebDavBackup(fileName: string, config: Partial<WebDavConfig>) {
+  const normalized = validateConfig(config)
+
+  if (!DEFAULT_BACKUP_STORAGE.exists) {
+    DEFAULT_BACKUP_STORAGE.create({ intermediates: true, idempotent: true })
+  }
+
+  const localFileName = `webdav-${Date.now()}-${fileName}`
+  const localFile = new File(DEFAULT_BACKUP_STORAGE, localFileName)
+
+  if (localFile.exists) {
+    localFile.delete()
+  }
+
+  const response = await webDavRequest(
+    normalized,
+    fileName,
+    {
+      method: 'GET'
+    },
+    [200]
+  )
+
+  const data = Buffer.from(await response.arrayBuffer())
+  await LegacyFileSystem.writeAsStringAsync(localFile.uri, data.toString('base64'), {
+    encoding: LegacyFileSystem.EncodingType.Base64
+  })
+
+  return {
+    fileName,
+    uri: localFile.uri,
+    size: data.byteLength
+  }
+}

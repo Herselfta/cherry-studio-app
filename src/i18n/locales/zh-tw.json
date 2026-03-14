@@ -932,8 +932,15 @@
       "webdav": {
         "backup": {
           "auto_backup": "自動備份",
+          "backup_success": "已將 {{fileName}} 上傳到 WebDAV",
+          "connection_success": "WebDAV 連線正常",
+          "description": "將目前應用資料備份到 WebDAV，或從遠端備份檔案還原。",
+          "empty": "未找到 WebDAV 備份檔案",
           "from_webdav": "從 WebDAV 還原",
+          "invalid_config": "請先填寫有效的 WebDAV 設定",
           "max_backups": "最大備份數",
+          "remote_files": "遠端備份檔案",
+          "saved": "WebDAV 設定已儲存",
           "slim_backup": "精簡備份",
           "title": "備份設定",
           "to_webdav": "備份到 WebDAV",

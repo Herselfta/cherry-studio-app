@@ -14,7 +14,7 @@ import {
   XStack,
   YStack
 } from '@/componentsV2'
-import { FolderSearch2, Wifi } from '@/componentsV2/icons/LucideIcon'
+import { Cloud, FolderSearch2, Wifi } from '@/componentsV2/icons/LucideIcon'
 import type { NavigationProps } from '@/types/naviagate'
 
 interface SettingItemConfig {
@@ -47,22 +47,17 @@ export default function DataSettingsScreen() {
           screen: 'LanTransferScreen'
         }
       ]
+    },
+    {
+      title: t('settings.data.cloud_backup'),
+      items: [
+        {
+          title: 'WebDAV',
+          screen: 'WebDavScreen',
+          icon: <Cloud size={24} />
+        }
+      ]
     }
-    // {
-    //   title: t('settings.data.cloud_backup'),
-    //   items: [
-    //     {
-    //       title: 'WebDAV',
-    //       screen: 'WebDavScreen',
-    //       icon: <CloudUpload size={24} />
-    //     },
-    //     {
-    //       title: t('settings.nutstore.config'),
-    //       screen: 'NutstoreLoginScreen',
-    //       icon: <DataBackupIcon provider="nutstore" />
-    //     }
-    //   ]
-    // },
     // {
     //   title: t('settings.data.third_party'),
     //   items: [

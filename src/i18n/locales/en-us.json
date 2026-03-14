@@ -932,8 +932,15 @@
       "webdav": {
         "backup": {
           "auto_backup": "Auto Backup",
+          "backup_success": "Uploaded {{fileName}} to WebDAV",
+          "connection_success": "WebDAV is available",
+          "description": "Back up your current app data to WebDAV or restore from a remote backup file.",
+          "empty": "No WebDAV backups found",
           "from_webdav": "Restore from WebDAV",
+          "invalid_config": "Please complete a valid WebDAV configuration first",
           "max_backups": "Maximum Backups",
+          "remote_files": "Remote Backup Files",
+          "saved": "WebDAV configuration saved",
           "slim_backup": "Slim Backup",
           "title": "Backup Settings",
           "to_webdav": "Backup to WebDAV",

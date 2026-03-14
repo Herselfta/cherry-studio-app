@@ -932,8 +932,15 @@
       "webdav": {
         "backup": {
           "auto_backup": "自動バックアップ",
+          "backup_success": "{{fileName}} を WebDAV にアップロードしました",
+          "connection_success": "WebDAV 接続は正常です",
+          "description": "現在のアプリデータを WebDAV にバックアップするか、リモートバックアップから復元します。",
+          "empty": "WebDAV バックアップが見つかりません",
           "from_webdav": "WebDAV から復元",
+          "invalid_config": "有効な WebDAV 設定を先に入力してください",
           "max_backups": "最大バックアップ数",
+          "remote_files": "リモートバックアップファイル",
+          "saved": "WebDAV 設定を保存しました",
           "slim_backup": "スリムバックアップ",
           "title": "バックアップ設定",
           "to_webdav": "WebDAV にバックアップ",
