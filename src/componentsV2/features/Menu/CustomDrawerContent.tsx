@@ -19,6 +19,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { useCurrentTopic } from '@/hooks/useTopic'
 import { loggerService } from '@/services/LoggerService'
 import { topicService } from '@/services/TopicService'
+import { getWebDavConfig, hasValidWebDavConfig } from '@/services/WebDavService'
 import type { Assistant } from '@/types/assistant'
 
 import { AssistantList } from './AssistantList'
@@ -52,9 +53,14 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
   }
 
   const handleNavigateWebDavRestoreScreen = () => {
+    const hasConfiguredWebDav = hasValidWebDavConfig(getWebDavConfig())
+
     props.navigation.navigate('Home', {
       screen: 'DataSourcesSettings',
-      params: { screen: 'WebDavScreen' }
+      params: {
+        screen: 'WebDavScreen',
+        params: hasConfiguredWebDav ? { autoOpenRestoreSelection: true } : undefined
+      }
     })
   }
 

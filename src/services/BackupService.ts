@@ -16,6 +16,7 @@ import { getSystemAssistants } from '@/config/assistants'
 import { DEFAULT_BACKUP_STORAGE, DEFAULT_DOCUMENTS_STORAGE } from '@/constants/storage'
 import { loggerService } from '@/services/LoggerService'
 import { preferenceService } from '@/services/PreferenceService'
+import { ThemeMode } from '@/types'
 import type { Assistant, Topic } from '@/types/assistant'
 import type {
   ExportIndexedData,
@@ -40,6 +41,14 @@ import {
   type WebDavConfig
 } from './WebDavConfigService'
 const logger = loggerService.withContext('Backup Service')
+
+export function getThemeModeFromBackupSettings(settings: ExportReduxData['settings']) {
+  if (!settings.theme) {
+    return undefined
+  }
+
+  return Object.values(ThemeMode).includes(settings.theme) ? settings.theme : undefined
+}
 
 export type RestoreStepId = 'clear_data' | 'receive_file' | 'restore_settings' | 'restore_messages'
 
@@ -234,6 +243,11 @@ async function restoreReduxData(
   await new Promise(resolve => setTimeout(resolve, 200)) // Delay between steps
 
   await preferenceService.set('user.name', data.settings.userName)
+  const themeMode = getThemeModeFromBackupSettings(data.settings)
+
+  if (themeMode) {
+    await preferenceService.set('ui.theme_mode', themeMode)
+  }
 
   if (webDavConfig) {
     saveStoredWebDavConfig(webDavConfig)
@@ -454,6 +468,7 @@ async function getAllData(): Promise<string> {
     const overrideSearchService = await preferenceService.get('websearch.override_search_service')
     const contentLimit = await preferenceService.get('websearch.content_limit')
     const appInitializationVersion = await preferenceService.get('app.initialization_version')
+    const themeMode = await preferenceService.get('ui.theme_mode')
     const webDavConfig = getStoredWebDavConfig()
 
     let defaultAssistant: Assistant | null = null
@@ -515,6 +530,7 @@ async function getAllData(): Promise<string> {
 
     const settingsPayload = {
       userName,
+      theme: themeMode,
       ...getWebDavBackupSettings(webDavConfig)
     }
 

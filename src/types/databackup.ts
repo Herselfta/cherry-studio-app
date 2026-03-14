@@ -1,6 +1,7 @@
 import type { WebSearchProvider, WebSearchState } from '@/types/websearch'
 
 import type { Assistant, Provider, Topic } from './assistant'
+import type { ThemeMode } from './index'
 import type { MCPServer } from './mcp'
 import type { Message, MessageBlock } from './message'
 
@@ -37,6 +38,7 @@ export type ImportReduxData = {
   websearch: WebSearchState & { providers: WebSearchProvider[] }
   settings: {
     userName: string
+    theme?: ThemeMode
     webdavHost?: string
     webdavUser?: string
     webdavPass?: string

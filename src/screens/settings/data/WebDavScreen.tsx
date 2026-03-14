@@ -1,9 +1,11 @@
+import type { RouteProp } from '@react-navigation/native'
+import { useRoute } from '@react-navigation/native'
 import type { Dispatch } from '@reduxjs/toolkit'
 import { reloadAppAsync } from 'expo'
 import { File } from 'expo-file-system'
 import { Button, Spinner } from 'heroui-native'
 import { delay } from 'lodash'
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -25,6 +27,7 @@ import {
 import SelectionSheet, { presentSelectionSheet } from '@/componentsV2/base/SelectionSheet'
 import { Check, Cloud, Download, Eye, EyeOff, RefreshCw, ShieldCheck } from '@/componentsV2/icons/LucideIcon'
 import { LAN_RESTORE_STEPS, useRestore } from '@/hooks/useRestore'
+import type { DataSourcesStackParamList } from '@/navigators/settings/DataSourcesStackNavigator'
 import type { ProgressUpdate } from '@/services/BackupService'
 import { restore as restoreBackupFile } from '@/services/BackupService'
 import { loggerService } from '@/services/LoggerService'
@@ -45,10 +48,13 @@ const logger = loggerService.withContext('WebDavScreen')
 const REMOTE_BACKUP_SHEET_NAME = 'webdav-backup-selection-sheet'
 
 type RestoreFile = Omit<FileMetadata, 'md5'>
+type WebDavScreenRouteProp = RouteProp<DataSourcesStackParamList, 'WebDavScreen'>
 
 export default function WebDavScreen() {
   const { t } = useTranslation()
+  const route = useRoute<WebDavScreenRouteProp>()
   const storedConfig = getWebDavConfig()
+  const hasOpenedAutoRestoreRef = useRef(false)
 
   const [host, setHost] = useState(storedConfig.host)
   const [user, setUser] = useState(storedConfig.user)
@@ -93,7 +99,7 @@ export default function WebDavScreen() {
     }
   }
 
-  const ensureConfigReady = async () => {
+  const ensureConfigReady = useCallback(async () => {
     if (!hasValidWebDavConfig(draftConfig)) {
       presentDialog('error', {
         title: t('common.error'),
@@ -103,7 +109,7 @@ export default function WebDavScreen() {
     }
 
     return saveWebDavConfig(draftConfig)
-  }
+  }, [draftConfig, t])
 
   const restoreFromWebDav = async (
     file: RestoreFile,
@@ -204,7 +210,7 @@ export default function WebDavScreen() {
     }
   }
 
-  const handleRestoreSelection = async () => {
+  const handleRestoreSelection = useCallback(async () => {
     const config = await ensureConfigReady()
     if (!config) return
 
@@ -232,7 +238,16 @@ export default function WebDavScreen() {
     } finally {
       setIsLoadingBackups(false)
     }
-  }
+  }, [ensureConfigReady, t])
+
+  useEffect(() => {
+    if (!route.params?.autoOpenRestoreSelection || hasOpenedAutoRestoreRef.current) {
+      return
+    }
+
+    hasOpenedAutoRestoreRef.current = true
+    void handleRestoreSelection()
+  }, [handleRestoreSelection, route.params?.autoOpenRestoreSelection])
 
   const handleRestoreBackup = (file: WebDavBackupFile) => {
     presentDialog('warning', {

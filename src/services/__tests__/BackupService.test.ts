@@ -57,10 +57,10 @@ jest.mock('@/services/TopicService', () => ({
   topicService: {}
 }))
 
-const { transformBackupData } = require('@/services/BackupService')
+const { getThemeModeFromBackupSettings, transformBackupData } = require('@/services/BackupService')
 
 describe('BackupService.transformBackupData', () => {
-  it('reads WebDAV config from desktop backup settings', () => {
+  it('reads WebDAV config and theme from desktop backup settings', () => {
     const backupData = JSON.stringify({
       localStorage: {
         'persist:cherry-studio': JSON.stringify({
@@ -72,6 +72,7 @@ describe('BackupService.transformBackupData', () => {
           websearch: JSON.stringify({ providers: [] }),
           settings: JSON.stringify({
             userName: 'Desktop User',
+            theme: 'dark',
             webdavHost: 'https://dav.example.com/',
             webdavUser: 'desktop-user',
             webdavPass: 'desktop-pass',
@@ -94,5 +95,26 @@ describe('BackupService.transformBackupData', () => {
       password: 'desktop-pass',
       path: '/desktop-backups'
     })
+    expect(parsed.reduxData.settings.theme).toBe('dark')
+  })
+})
+
+describe('BackupService.getThemeModeFromBackupSettings', () => {
+  it('returns a valid portable theme mode from backup settings', () => {
+    expect(
+      getThemeModeFromBackupSettings({
+        userName: 'Cherry Studio',
+        theme: 'dark'
+      })
+    ).toBe('dark')
+  })
+
+  it('ignores invalid desktop-only theme values', () => {
+    expect(
+      getThemeModeFromBackupSettings({
+        userName: 'Cherry Studio',
+        theme: 'amoled'
+      })
+    ).toBeUndefined()
   })
 })
