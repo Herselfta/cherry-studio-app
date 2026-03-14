@@ -5,22 +5,26 @@ import * as LegacyFileSystem from 'expo-file-system/legacy'
 import { XMLParser } from 'fast-xml-parser'
 
 import { DEFAULT_BACKUP_STORAGE } from '@/constants/storage'
-import { storage } from '@/utils'
 
 import { backup } from './BackupService'
 import { loggerService } from './LoggerService'
+import {
+  hasValidWebDavConfig,
+  normalizeWebDavConfig,
+  normalizeWebDavPath,
+  type WebDavConfig
+} from './WebDavConfigService'
 
 const logger = loggerService.withContext('WebDavService')
-
-export const WEBDAV_CONFIG_STORAGE_KEY = 'webdav_config_v1'
-export const DEFAULT_WEBDAV_PATH = '/CherryStudio'
-
-export interface WebDavConfig {
-  host: string
-  user: string
-  password: string
-  path: string
-}
+export {
+  DEFAULT_WEBDAV_PATH,
+  getStoredWebDavConfig as getWebDavConfig,
+  hasValidWebDavConfig,
+  normalizeWebDavConfig,
+  normalizeWebDavPath,
+  saveStoredWebDavConfig as saveWebDavConfig,
+  WEBDAV_CONFIG_STORAGE_KEY
+} from './WebDavConfigService'
 
 export interface WebDavBackupFile {
   fileName: string
@@ -69,56 +73,6 @@ function sanitizeErrorMessage(value: string) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-}
-
-export function normalizeWebDavPath(path?: string) {
-  const trimmedPath = path?.trim() ?? ''
-
-  if (!trimmedPath) {
-    return DEFAULT_WEBDAV_PATH
-  }
-
-  if (/^\/+$/.test(trimmedPath)) {
-    return '/'
-  }
-
-  const normalized = trimmedPath.replace(/^\/+/, '').replace(/\/+$/, '')
-  return normalized ? `/${normalized}` : DEFAULT_WEBDAV_PATH
-}
-
-export function normalizeWebDavConfig(config: Partial<WebDavConfig>): WebDavConfig {
-  return {
-    host: config.host?.trim() ?? '',
-    user: config.user?.trim() ?? '',
-    password: config.password ?? '',
-    path: normalizeWebDavPath(config.path)
-  }
-}
-
-export function hasValidWebDavConfig(config: Partial<WebDavConfig>) {
-  const normalized = normalizeWebDavConfig(config)
-  return Boolean(normalized.host && normalized.user && normalized.password)
-}
-
-export function getWebDavConfig(): WebDavConfig {
-  const rawConfig = storage.getString(WEBDAV_CONFIG_STORAGE_KEY)
-
-  if (!rawConfig) {
-    return normalizeWebDavConfig({})
-  }
-
-  try {
-    return normalizeWebDavConfig(JSON.parse(rawConfig))
-  } catch (error) {
-    logger.warn('Failed to parse stored WebDAV config', error as Error)
-    return normalizeWebDavConfig({})
-  }
-}
-
-export function saveWebDavConfig(config: Partial<WebDavConfig>) {
-  const normalized = normalizeWebDavConfig(config)
-  storage.set(WEBDAV_CONFIG_STORAGE_KEY, JSON.stringify(normalized))
-  return normalized
 }
 
 export function parseWebDavBackupFiles(xml: string): WebDavBackupFile[] {

@@ -31,6 +31,14 @@ import { resetAppInitializationState, runAppDataMigrations } from './AppInitiali
 import { assistantService } from './AssistantService'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
+import {
+  getStoredWebDavConfig,
+  getWebDavBackupSettings,
+  getWebDavConfigFromBackup,
+  saveStoredWebDavConfig,
+  WEBDAV_CONFIG_STORAGE_KEY,
+  type WebDavConfig
+} from './WebDavConfigService'
 const logger = loggerService.withContext('Backup Service')
 
 export type RestoreStepId = 'clear_data' | 'receive_file' | 'restore_settings' | 'restore_messages'
@@ -191,7 +199,12 @@ async function restoreIndexedDbData(data: ExportIndexedData, onProgress: OnProgr
   onProgress({ step: 'restore_messages', status: 'completed' })
 }
 
-async function restoreReduxData(data: ExportReduxData, onProgress: OnProgressCallback, _dispatch: Dispatch) {
+async function restoreReduxData(
+  data: ExportReduxData,
+  onProgress: OnProgressCallback,
+  _dispatch: Dispatch,
+  webDavConfig?: WebDavConfig | null
+) {
   onProgress({ step: 'restore_settings', status: 'in_progress' })
   await providerDatabase.upsertProviders(data.llm.providers)
   providerService.invalidateCache()
@@ -221,6 +234,11 @@ async function restoreReduxData(data: ExportReduxData, onProgress: OnProgressCal
   await new Promise(resolve => setTimeout(resolve, 200)) // Delay between steps
 
   await preferenceService.set('user.name', data.settings.userName)
+
+  if (webDavConfig) {
+    saveStoredWebDavConfig(webDavConfig)
+  }
+
   onProgress({ step: 'restore_settings', status: 'completed' })
 }
 
@@ -256,7 +274,7 @@ export async function restore(
     fileContent = null
 
     logger.info('Restoring Redux data...')
-    await restoreReduxData(parsedData.reduxData, onProgress, dispatch)
+    await restoreReduxData(parsedData.reduxData, onProgress, dispatch, parsedData.webDavConfig)
 
     // Redux 数据已写入，释放内存
     // @ts-ignore
@@ -299,10 +317,11 @@ export async function restore(
   }
 }
 
-function transformBackupData(data: string): {
+export function transformBackupData(data: string): {
   reduxData: ExportReduxData
   indexedData: ExportIndexedData
   appInitializationVersion?: number
+  webDavConfig?: WebDavConfig | null
 } {
   let orginalData: any
 
@@ -328,15 +347,20 @@ function transformBackupData(data: string): {
 
   orginalData = null
   let persistDataString = localStorageData['persist:cherry-studio']
-  localStorageData = null
   let rawReduxData = JSON.parse(persistDataString)
   persistDataString = null
+  const settingsData = JSON.parse(rawReduxData.settings)
+  const webDavConfig = getWebDavConfigFromBackup({
+    localStorage: localStorageData,
+    settings: settingsData
+  })
+  localStorageData = null
 
   const reduxData: ImportReduxData = {
     assistants: JSON.parse(rawReduxData.assistants),
     llm: JSON.parse(rawReduxData.llm),
     websearch: JSON.parse(rawReduxData.websearch),
-    settings: JSON.parse(rawReduxData.settings),
+    settings: settingsData,
     mcp: rawReduxData.mcp ? JSON.parse(rawReduxData.mcp) : undefined
   }
 
@@ -405,7 +429,8 @@ function transformBackupData(data: string): {
   return {
     reduxData: reduxData,
     indexedData: indexedDbData,
-    appInitializationVersion
+    appInitializationVersion,
+    webDavConfig
   }
 }
 
@@ -429,6 +454,7 @@ async function getAllData(): Promise<string> {
     const overrideSearchService = await preferenceService.get('websearch.override_search_service')
     const contentLimit = await preferenceService.get('websearch.content_limit')
     const appInitializationVersion = await preferenceService.get('app.initialization_version')
+    const webDavConfig = getStoredWebDavConfig()
 
     let defaultAssistant: Assistant | null = null
 
@@ -488,7 +514,8 @@ async function getAllData(): Promise<string> {
     }
 
     const settingsPayload = {
-      userName
+      userName,
+      ...getWebDavBackupSettings(webDavConfig)
     }
 
     const mcpPayload = {
@@ -504,7 +531,8 @@ async function getAllData(): Promise<string> {
     })
 
     const localStorage: Record<string, string> = {
-      'persist:cherry-studio': persistDataString
+      'persist:cherry-studio': persistDataString,
+      [WEBDAV_CONFIG_STORAGE_KEY]: JSON.stringify(webDavConfig)
     }
 
     const messagesByTopic = messages.reduce<Record<string, Message[]>>((accumulator, message) => {

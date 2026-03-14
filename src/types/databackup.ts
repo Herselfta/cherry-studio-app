@@ -37,6 +37,10 @@ export type ImportReduxData = {
   websearch: WebSearchState & { providers: WebSearchProvider[] }
   settings: {
     userName: string
+    webdavHost?: string
+    webdavUser?: string
+    webdavPass?: string
+    webdavPath?: string
   }
   mcp?: {
     servers: MCPServer[]
