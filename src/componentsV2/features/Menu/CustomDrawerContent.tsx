@@ -7,7 +7,7 @@ import { View } from 'react-native'
 import { IconButton } from '@/componentsV2/base/IconButton'
 import Image from '@/componentsV2/base/Image'
 import Text from '@/componentsV2/base/Text'
-import { MarketIcon, MCPIcon, Settings } from '@/componentsV2/icons'
+import { Download, MarketIcon, MCPIcon, Settings } from '@/componentsV2/icons'
 import PressableRow from '@/componentsV2/layout/PressableRow'
 import RowRightArrow from '@/componentsV2/layout/Row/RowRightArrow'
 import XStack from '@/componentsV2/layout/XStack'
@@ -49,6 +49,13 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
 
   const handleNavigateSettingsScreen = () => {
     props.navigation.navigate('Home', { screen: 'SettingsScreen' })
+  }
+
+  const handleNavigateWebDavRestoreScreen = () => {
+    props.navigation.navigate('Home', {
+      screen: 'DataSourcesSettings',
+      params: { screen: 'WebDavScreen' }
+    })
   }
 
   const handleNavigatePersonalScreen = () => {
@@ -133,7 +140,10 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
           />
           <Text className="text-base">{userName || t('common.cherry_studio')}</Text>
         </PressableRow>
-        <IconButton icon={<Settings size={24} />} onPress={handleNavigateSettingsScreen} style={{ paddingRight: 16 }} />
+        <XStack className="items-center gap-5 pr-4">
+          <IconButton icon={<Download size={24} />} onPress={handleNavigateWebDavRestoreScreen} />
+          <IconButton icon={<Settings size={24} />} onPress={handleNavigateSettingsScreen} />
+        </XStack>
       </XStack>
     </View>
   )
