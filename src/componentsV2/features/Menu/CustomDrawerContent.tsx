@@ -3,11 +3,12 @@ import { Divider } from 'heroui-native'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { View } from 'react-native'
+import { Uniwind } from 'uniwind'
 
 import { IconButton } from '@/componentsV2/base/IconButton'
 import Image from '@/componentsV2/base/Image'
 import Text from '@/componentsV2/base/Text'
-import { Download, MarketIcon, MCPIcon, Settings } from '@/componentsV2/icons'
+import { Download, MarketIcon, MCPIcon, Palette, Settings } from '@/componentsV2/icons'
 import PressableRow from '@/componentsV2/layout/PressableRow'
 import RowRightArrow from '@/componentsV2/layout/Row/RowRightArrow'
 import XStack from '@/componentsV2/layout/XStack'
@@ -20,6 +21,7 @@ import { useCurrentTopic } from '@/hooks/useTopic'
 import { loggerService } from '@/services/LoggerService'
 import { topicService } from '@/services/TopicService'
 import { getWebDavConfig, hasValidWebDavConfig } from '@/services/WebDavService'
+import { ThemeMode } from '@/types'
 import type { Assistant } from '@/types/assistant'
 
 import { AssistantList } from './AssistantList'
@@ -29,8 +31,8 @@ const logger = loggerService.withContext('CustomDrawerContent')
 
 export default function CustomDrawerContent(props: DrawerContentComponentProps) {
   const { t } = useTranslation()
-  const { isDark } = useTheme()
-  const { avatar, userName } = useSettings()
+  const { activeTheme, isDark } = useTheme()
+  const { avatar, userName, setTheme } = useSettings()
   const insets = useSafeArea()
   const { switchTopic } = useCurrentTopic()
 
@@ -62,6 +64,17 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
         params: hasConfiguredWebDav ? { autoOpenRestoreSelection: true } : undefined
       }
     })
+  }
+
+  const handleToggleTheme = async () => {
+    const nextTheme = activeTheme === 'dark' ? ThemeMode.light : ThemeMode.dark
+
+    try {
+      await setTheme(nextTheme)
+      Uniwind.setTheme(nextTheme)
+    } catch (error) {
+      logger.error('Failed to toggle theme from drawer', error as Error)
+    }
   }
 
   const handleNavigatePersonalScreen = () => {
@@ -147,6 +160,7 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
           <Text className="text-base">{userName || t('common.cherry_studio')}</Text>
         </PressableRow>
         <XStack className="items-center gap-5 pr-4">
+          <IconButton icon={<Palette size={24} />} onPress={handleToggleTheme} />
           <IconButton icon={<Download size={24} />} onPress={handleNavigateWebDavRestoreScreen} />
           <IconButton icon={<Settings size={24} />} onPress={handleNavigateSettingsScreen} />
         </XStack>
