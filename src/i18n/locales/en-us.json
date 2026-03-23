@@ -946,6 +946,16 @@
           "to_webdav": "Backup to WebDAV",
           "unlimited": "Unlimited"
         },
+        "sync": {
+          "confirm": "Import the phone sync payload from WebDAV and merge it into current data?",
+          "description": "Sync only the shared mobile/desktop data subset over WebDAV without overwriting mobile-only state.",
+          "empty": "No mobile sync files found",
+          "from_webdav": "Sync from WebDAV",
+          "remote_files": "Remote Sync Files",
+          "title": "Phone Sync",
+          "to_webdav": "Sync to WebDAV",
+          "upload_success": "Synced {{fileName}} to WebDAV"
+        },
         "config": {
           "apply": "Apply",
           "host": "WebDAV Host",

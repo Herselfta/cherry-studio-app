@@ -946,6 +946,16 @@
           "to_webdav": "备份到 WebDAV",
           "unlimited": "无限制"
         },
+        "sync": {
+          "confirm": "将从 WebDAV 导入手机同步数据并合并到当前数据，是否继续？",
+          "description": "通过 WebDAV 同步手机与桌面都能识别的公共数据，不会覆盖移动端专属配置。",
+          "empty": "未找到手机同步文件",
+          "from_webdav": "从 WebDAV 同步",
+          "remote_files": "远端同步文件",
+          "title": "手机同步",
+          "to_webdav": "同步到 WebDAV",
+          "upload_success": "已将 {{fileName}} 同步到 WebDAV"
+        },
         "config": {
           "apply": "应用",
           "host": "WebDAV 主机",

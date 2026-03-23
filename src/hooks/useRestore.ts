@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDispatch } from 'react-redux'
+import type { Dispatch } from '@reduxjs/toolkit'
 
 import { presentDialog } from '@/componentsV2'
 import type { RestoreStep } from '@/componentsV2/features/SettingsScreen/data/RestoreProgressModal'
@@ -73,7 +74,8 @@ export interface UseRestoreOptions {
   clearBeforeRestore?: boolean
   customRestoreFunction?: (
     file: Omit<FileMetadata, 'md5'>,
-    onProgress: (update: ProgressUpdate) => void
+    onProgress: (update: ProgressUpdate) => void,
+    dispatch: Dispatch
   ) => Promise<void>
 }
 

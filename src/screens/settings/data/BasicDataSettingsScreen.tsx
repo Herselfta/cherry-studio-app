@@ -2,7 +2,7 @@ import { databaseMaintenance } from '@database'
 import { useNavigation } from '@react-navigation/native'
 import { reloadAppAsync } from 'expo'
 import * as DocumentPicker from 'expo-document-picker'
-import { Paths } from 'expo-file-system'
+import { File, Paths } from 'expo-file-system'
 import * as IntentLauncher from 'expo-intent-launcher'
 import { delay } from 'lodash'
 import React, { useEffect, useState } from 'react'
@@ -27,8 +27,9 @@ import {
 import { FileText, Folder, FolderOpen, RotateCcw, Save, Trash2 } from '@/componentsV2/icons/LucideIcon'
 import { DEFAULT_RESTORE_STEPS, useRestore } from '@/hooks/useRestore'
 import { backup } from '@/services/BackupService'
-import { getCacheDirectorySize, resetCacheDirectory, saveFileToFolder } from '@/services/FileService'
+import { getCacheDirectorySize, resetCacheDirectory, saveFileToFolder, saveTextAsFile } from '@/services/FileService'
 import { loggerService } from '@/services/LoggerService'
+import { exportMobileSyncPayload, importMobileSyncPayload } from '@/services/MobileSyncService'
 import { persistor } from '@/store'
 import type { NavigationProps } from '@/types/naviagate'
 import { formatFileSize } from '@/utils/file'
@@ -58,11 +59,32 @@ export default function BasicDataSettingsScreen() {
     stepConfigs: DEFAULT_RESTORE_STEPS,
     clearBeforeRestore: true
   })
+  const {
+    isModalOpen: isMobileSyncModalOpen,
+    restoreSteps: mobileSyncRestoreSteps,
+    overallStatus: mobileSyncOverallStatus,
+    startRestore: startMobileSyncRestore,
+    closeModal: closeMobileSyncModal
+  } = useRestore({
+    stepConfigs: DEFAULT_RESTORE_STEPS,
+    clearBeforeRestore: false,
+    customRestoreFunction: async (file, onProgress, dispatch) => {
+      const payload = await new File(file.path).text()
+      await importMobileSyncPayload(payload, onProgress, dispatch)
+    }
+  })
 
   const handleRestoreClose = () => {
     closeModal()
     if (overallStatus === 'success') {
       // 恢复成功后重启应用，与重置数据行为一致
+      delay(async () => await reloadAppAsync(), 200)
+    }
+  }
+
+  const handleMobileSyncClose = () => {
+    closeMobileSyncModal()
+    if (mobileSyncOverallStatus === 'success') {
       delay(async () => await reloadAppAsync(), 200)
     }
   }
@@ -116,6 +138,42 @@ export default function BasicDataSettingsScreen() {
         })
       }
     })
+  }
+
+  const handleExportMobileSync = async () => {
+    try {
+      const payload = await exportMobileSyncPayload()
+      const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)
+      const tempFile = await saveTextAsFile(payload, `cherry-studio.mobile-sync.${timestamp}`)
+      await saveFileToFolder(tempFile.path, `cherry-studio.mobile-sync.${timestamp}.json`, 'application/json')
+    } catch (error) {
+      logger.error('handleExportMobileSync', error as Error)
+      presentDialog('error', {
+        title: t('common.error'),
+        content: (error as Error).message
+      })
+    }
+  }
+
+  const handleImportMobileSync = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/json' })
+      if (result.canceled) return
+
+      const asset = result.assets[0]
+      await startMobileSyncRestore({
+        name: asset.name,
+        uri: asset.uri,
+        size: asset.size,
+        mimeType: asset.mimeType
+      })
+    } catch (error) {
+      logger.error('handleImportMobileSync', error as Error)
+      presentDialog('error', {
+        title: t('common.error'),
+        content: (error as Error).message
+      })
+    }
   }
 
   const handleDataReset = () => {
@@ -235,6 +293,16 @@ export default function BasicDataSettingsScreen() {
           onPress: handleRestore
         },
         {
+          title: t('common.import_from_cherry_studio'),
+          icon: <FolderOpen size={24} />,
+          onPress: handleImportMobileSync
+        },
+        {
+          title: t('settings.data.backup'),
+          icon: <Save size={24} />,
+          onPress: handleExportMobileSync
+        },
+        {
           title: isResetting ? t('common.loading') : t('settings.data.reset'),
           icon: <RotateCcw size={24} className="text-red-500" />,
           danger: true,
@@ -287,6 +355,12 @@ export default function BasicDataSettingsScreen() {
         steps={restoreSteps}
         overallStatus={overallStatus}
         onClose={handleRestoreClose}
+      />
+      <RestoreProgressModal
+        isOpen={isMobileSyncModalOpen}
+        steps={mobileSyncRestoreSteps}
+        overallStatus={mobileSyncOverallStatus}
+        onClose={handleMobileSyncClose}
       />
     </SafeAreaContainer>
   )

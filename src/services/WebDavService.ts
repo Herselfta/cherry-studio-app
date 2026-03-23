@@ -8,6 +8,7 @@ import { DEFAULT_BACKUP_STORAGE } from '@/constants/storage'
 
 import { backup } from './BackupService'
 import { loggerService } from './LoggerService'
+import { exportMobileSyncPayload, isMobileSyncRemoteFile } from './MobileSyncService'
 import {
   hasValidWebDavConfig,
   normalizeWebDavConfig,
@@ -31,6 +32,8 @@ export interface WebDavBackupFile {
   size: number
   modifiedTime: string
 }
+
+export type WebDavRemoteFile = WebDavBackupFile
 
 type WebDavPropstat = {
   status?: string
@@ -75,7 +78,7 @@ function sanitizeErrorMessage(value: string) {
     .trim()
 }
 
-export function parseWebDavBackupFiles(xml: string): WebDavBackupFile[] {
+export function parseWebDavRemoteFiles(xml: string): WebDavRemoteFile[] {
   const parsed = propfindParser.parse(xml) as {
     multistatus?: {
       response?: WebDavResponseNode | WebDavResponseNode[]
@@ -98,7 +101,7 @@ export function parseWebDavBackupFiles(xml: string): WebDavBackupFile[] {
       const fileName = props.displayname || fallbackName
       const isCollection = props.resourcetype && 'collection' in props.resourcetype
 
-      if (!fileName || isCollection || !fileName.endsWith('.zip')) {
+      if (!fileName || isCollection) {
         return null
       }
 
@@ -106,14 +109,18 @@ export function parseWebDavBackupFiles(xml: string): WebDavBackupFile[] {
         fileName,
         size: Number(props.getcontentlength || 0),
         modifiedTime: props.getlastmodified || ''
-      } satisfies WebDavBackupFile
+      } satisfies WebDavRemoteFile
     })
-    .filter((file): file is WebDavBackupFile => file !== null)
+    .filter((file): file is WebDavRemoteFile => file !== null)
     .sort((left, right) => {
       const leftTime = left.modifiedTime ? new Date(left.modifiedTime).getTime() : 0
       const rightTime = right.modifiedTime ? new Date(right.modifiedTime).getTime() : 0
       return rightTime - leftTime
     })
+}
+
+export function parseWebDavBackupFiles(xml: string): WebDavBackupFile[] {
+  return parseWebDavRemoteFiles(xml).filter(file => file.fileName.endsWith('.zip'))
 }
 
 function encodePathSegments(path: string) {
@@ -283,6 +290,42 @@ export async function listWebDavBackupFiles(config: Partial<WebDavConfig>) {
   }
 }
 
+export async function listWebDavMobileSyncFiles(config: Partial<WebDavConfig>) {
+  const normalized = validateConfig(config)
+
+  try {
+    const response = await webDavRequest(
+      normalized,
+      undefined,
+      {
+        method: 'PROPFIND',
+        headers: {
+          Depth: '1',
+          'Content-Type': 'application/xml; charset=utf-8'
+        },
+        body: `<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop>
+    <d:displayname />
+    <d:getcontentlength />
+    <d:getlastmodified />
+    <d:resourcetype />
+  </d:prop>
+</d:propfind>`
+      },
+      [207]
+    )
+
+    return parseWebDavRemoteFiles(await response.text()).filter(file => isMobileSyncRemoteFile(file.fileName))
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('HTTP 404')) {
+      return []
+    }
+
+    throw error
+  }
+}
+
 export async function backupToWebDav(config: Partial<WebDavConfig>) {
   const normalized = validateConfig(config)
   await ensureBackupDirectoryExists(normalized)
@@ -323,6 +366,41 @@ export async function backupToWebDav(config: Partial<WebDavConfig>) {
   }
 }
 
+function buildMobileSyncFileName() {
+  const timestamp = dayjs().format('YYYYMMDDHHmmss')
+  return `cherry-studio.mobile-sync.${timestamp}.mobile.json`
+}
+
+export async function backupMobileSyncToWebDav(config: Partial<WebDavConfig>) {
+  const normalized = validateConfig(config)
+  await ensureBackupDirectoryExists(normalized)
+
+  // Cloud mobile sync intentionally uploads the shared-data JSON directly so phone
+  // and desktop exchange the same portable payload instead of treating WebDAV as
+  // another full-backup transport with platform-specific restore behavior.
+  const payload = await exportMobileSyncPayload()
+  const fileName = buildMobileSyncFileName()
+
+  await webDavRequest(
+    normalized,
+    fileName,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8'
+      },
+      body: payload
+    },
+    [200, 201, 204]
+  )
+
+  return {
+    fileName,
+    size: Buffer.from(payload, 'utf8').byteLength,
+    modifiedTime: new Date().toISOString()
+  } satisfies WebDavRemoteFile
+}
+
 export async function downloadWebDavBackup(fileName: string, config: Partial<WebDavConfig>) {
   const normalized = validateConfig(config)
 
@@ -356,4 +434,18 @@ export async function downloadWebDavBackup(fileName: string, config: Partial<Web
     uri: localFile.uri,
     size: data.byteLength
   }
+}
+
+export async function downloadWebDavMobileSync(fileName: string, config: Partial<WebDavConfig>) {
+  const normalized = validateConfig(config)
+  const response = await webDavRequest(
+    normalized,
+    fileName,
+    {
+      method: 'GET'
+    },
+    [200]
+  )
+
+  return response.text()
 }

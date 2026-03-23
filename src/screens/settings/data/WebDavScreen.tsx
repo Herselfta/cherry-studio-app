@@ -31,13 +31,17 @@ import type { DataSourcesStackParamList } from '@/navigators/settings/DataSource
 import type { ProgressUpdate } from '@/services/BackupService'
 import { restore as restoreBackupFile } from '@/services/BackupService'
 import { loggerService } from '@/services/LoggerService'
+import { importMobileSyncPayload } from '@/services/MobileSyncService'
 import {
+  backupMobileSyncToWebDav,
   backupToWebDav,
   checkWebDavConnection,
   downloadWebDavBackup,
+  downloadWebDavMobileSync,
   getWebDavConfig,
   hasValidWebDavConfig,
   listWebDavBackupFiles,
+  listWebDavMobileSyncFiles,
   saveWebDavConfig,
   type WebDavBackupFile
 } from '@/services/WebDavService'
@@ -46,6 +50,7 @@ import { formatFileSize } from '@/utils/file'
 
 const logger = loggerService.withContext('WebDavScreen')
 const REMOTE_BACKUP_SHEET_NAME = 'webdav-backup-selection-sheet'
+const REMOTE_MOBILE_SYNC_SHEET_NAME = 'webdav-mobile-sync-selection-sheet'
 
 type RestoreFile = Omit<FileMetadata, 'md5'>
 type WebDavScreenRouteProp = RouteProp<DataSourcesStackParamList, 'WebDavScreen'>
@@ -65,7 +70,10 @@ export default function WebDavScreen() {
   const [isChecking, setIsChecking] = useState(false)
   const [isBackingUp, setIsBackingUp] = useState(false)
   const [isLoadingBackups, setIsLoadingBackups] = useState(false)
+  const [isSyncingMobile, setIsSyncingMobile] = useState(false)
+  const [isLoadingMobileSyncs, setIsLoadingMobileSyncs] = useState(false)
   const [remoteBackups, setRemoteBackups] = useState<WebDavBackupFile[]>([])
+  const [remoteMobileSyncFiles, setRemoteMobileSyncFiles] = useState<WebDavBackupFile[]>([])
 
   const draftConfig = useMemo(
     () => ({
@@ -153,11 +161,36 @@ export default function WebDavScreen() {
     clearBeforeRestore: true,
     customRestoreFunction: restoreFromWebDav as any
   })
+  const {
+    isModalOpen: isMobileSyncModalOpen,
+    restoreSteps: mobileSyncRestoreSteps,
+    overallStatus: mobileSyncOverallStatus,
+    startRestore: startMobileSyncRestore,
+    closeModal: closeMobileSyncModal
+  } = useRestore({
+    stepConfigs: LAN_RESTORE_STEPS,
+    clearBeforeRestore: false,
+    customRestoreFunction: async (file, onProgress, dispatch) => {
+      const currentConfig = saveWebDavConfig(draftConfig)
+      onProgress({ step: 'receive_file', status: 'in_progress' })
+      const payload = await downloadWebDavMobileSync(file.name, currentConfig)
+      onProgress({ step: 'receive_file', status: 'completed' })
+      await importMobileSyncPayload(payload, onProgress, dispatch)
+    }
+  })
 
   const handleRestoreClose = () => {
     closeModal()
 
     if (overallStatus === 'success') {
+      delay(async () => await reloadAppAsync(), 200)
+    }
+  }
+
+  const handleMobileSyncClose = () => {
+    closeMobileSyncModal()
+
+    if (mobileSyncOverallStatus === 'success') {
       delay(async () => await reloadAppAsync(), 200)
     }
   }
@@ -210,6 +243,31 @@ export default function WebDavScreen() {
     }
   }
 
+  const handleMobileSyncBackup = async () => {
+    const config = await ensureConfigReady()
+    if (!config) return
+
+    setIsSyncingMobile(true)
+
+    try {
+      const uploaded = await backupMobileSyncToWebDav(config)
+      presentDialog('success', {
+        title: t('common.success'),
+        content: t('settings.webdav.sync.upload_success', {
+          fileName: uploaded.fileName
+        })
+      })
+    } catch (error) {
+      logger.error('WebDAV mobile sync upload failed', error as Error)
+      presentDialog('error', {
+        title: t('common.error'),
+        content: (error as Error).message || t('common.error_occurred')
+      })
+    } finally {
+      setIsSyncingMobile(false)
+    }
+  }
+
   const handleRestoreSelection = useCallback(async () => {
     const config = await ensureConfigReady()
     if (!config) return
@@ -237,6 +295,36 @@ export default function WebDavScreen() {
       })
     } finally {
       setIsLoadingBackups(false)
+    }
+  }, [ensureConfigReady, t])
+
+  const handleMobileSyncSelection = useCallback(async () => {
+    const config = await ensureConfigReady()
+    if (!config) return
+
+    setIsLoadingMobileSyncs(true)
+
+    try {
+      const files = await listWebDavMobileSyncFiles(config)
+      setRemoteMobileSyncFiles(files)
+
+      if (files.length === 0) {
+        presentDialog('info', {
+          title: t('settings.webdav.sync.from_webdav'),
+          content: t('settings.webdav.sync.empty')
+        })
+        return
+      }
+
+      presentSelectionSheet(REMOTE_MOBILE_SYNC_SHEET_NAME)
+    } catch (error) {
+      logger.error('Failed to list WebDAV mobile sync files', error as Error)
+      presentDialog('error', {
+        title: t('common.error'),
+        content: (error as Error).message || t('common.error_occurred')
+      })
+    } finally {
+      setIsLoadingMobileSyncs(false)
     }
   }, [ensureConfigReady, t])
 
@@ -268,12 +356,38 @@ export default function WebDavScreen() {
     })
   }
 
+  const handleImportMobileSync = (file: WebDavBackupFile) => {
+    presentDialog('warning', {
+      title: t('settings.webdav.sync.from_webdav'),
+      content: `${t('settings.webdav.sync.confirm')}\n\n${file.fileName}`,
+      confirmText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      showCancel: true,
+      onConfirm: async () => {
+        dismissDialog()
+        await startMobileSyncRestore({
+          name: file.fileName,
+          uri: file.fileName,
+          size: file.size,
+          mimeType: 'application/json'
+        })
+      }
+    })
+  }
+
   const remoteBackupItems = remoteBackups.map(file => ({
     key: file.fileName,
     label: file.fileName,
     description: `${file.modifiedTime ? new Date(file.modifiedTime).toLocaleString() : '--'} · ${formatFileSize(file.size)}`,
     icon: <Download size={18} />,
     onSelect: () => handleRestoreBackup(file)
+  }))
+  const remoteMobileSyncItems = remoteMobileSyncFiles.map(file => ({
+    key: file.fileName,
+    label: file.fileName,
+    description: `${file.modifiedTime ? new Date(file.modifiedTime).toLocaleString() : '--'} · ${formatFileSize(file.size)}`,
+    icon: <Download size={18} />,
+    onSelect: () => handleImportMobileSync(file)
   }))
 
   const actionsDisabled = !hasValidWebDavConfig(draftConfig)
@@ -377,6 +491,39 @@ export default function WebDavScreen() {
             {t('settings.webdav.backup.description')}
           </Text>
         </YStack>
+
+        <YStack className="gap-2">
+          <GroupTitle>{t('settings.webdav.sync.title')}</GroupTitle>
+          <Group>
+            <PressableRow disabled={actionsDisabled || isSyncingMobile} onPress={handleMobileSyncBackup}>
+              <XStack className="items-center gap-3">
+                <Cloud size={22} />
+                <Text>{t('settings.webdav.sync.to_webdav')}</Text>
+              </XStack>
+              {isSyncingMobile ? <Spinner size="sm" /> : <RowRightArrow />}
+            </PressableRow>
+
+            <PressableRow disabled={actionsDisabled || isLoadingMobileSyncs} onPress={handleMobileSyncSelection}>
+              <XStack className="items-center gap-3">
+                <Download size={22} />
+                <Text>{t('settings.webdav.sync.from_webdav')}</Text>
+              </XStack>
+              {isLoadingMobileSyncs ? <Spinner size="sm" /> : <RowRightArrow />}
+            </PressableRow>
+
+            <PressableRow disabled={actionsDisabled || isLoadingMobileSyncs} onPress={handleMobileSyncSelection}>
+              <XStack className="items-center gap-3">
+                <RefreshCw size={22} />
+                <Text>{t('settings.webdav.sync.remote_files')}</Text>
+              </XStack>
+              <Text className="text-foreground-secondary text-xs opacity-60">{remoteMobileSyncFiles.length}</Text>
+            </PressableRow>
+          </Group>
+
+          <Text className="text-foreground-secondary px-1 text-xs opacity-60">
+            {t('settings.webdav.sync.description')}
+          </Text>
+        </YStack>
       </Container>
 
       <SelectionSheet
@@ -387,11 +534,25 @@ export default function WebDavScreen() {
         emptyContent={<Text className="text-center opacity-60">{t('settings.webdav.backup.empty')}</Text>}
       />
 
+      <SelectionSheet
+        name={REMOTE_MOBILE_SYNC_SHEET_NAME}
+        detents={['auto', 0.5]}
+        items={remoteMobileSyncItems}
+        placeholder={t('settings.webdav.sync.remote_files')}
+        emptyContent={<Text className="text-center opacity-60">{t('settings.webdav.sync.empty')}</Text>}
+      />
+
       <RestoreProgressModal
         isOpen={isModalOpen}
         steps={restoreSteps}
         overallStatus={overallStatus}
         onClose={handleRestoreClose}
+      />
+      <RestoreProgressModal
+        isOpen={isMobileSyncModalOpen}
+        steps={mobileSyncRestoreSteps}
+        overallStatus={mobileSyncOverallStatus}
+        onClose={handleMobileSyncClose}
       />
     </SafeAreaContainer>
   )

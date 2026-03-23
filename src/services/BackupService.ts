@@ -256,6 +256,36 @@ async function restoreReduxData(
   onProgress({ step: 'restore_settings', status: 'completed' })
 }
 
+async function restoreParsedBackupData(data: string, onProgress: OnProgressCallback, dispatch: Dispatch) {
+  logger.info('Parsing and transforming backup data...')
+  let parsedData = transformBackupData(data)
+
+  logger.info('Restoring Redux data...')
+  await restoreReduxData(parsedData.reduxData, onProgress, dispatch, parsedData.webDavConfig)
+
+  // Redux data is written, release memory before restoring message-heavy payloads.
+  // @ts-ignore
+  parsedData.reduxData = null
+
+  logger.info('Restoring IndexedDB data...')
+  await restoreIndexedDbData(parsedData.indexedData, onProgress, dispatch)
+
+  const backupVersion = parsedData.appInitializationVersion
+
+  // Indexed data is already committed, release memory before migrations.
+  // @ts-ignore
+  parsedData.indexedData = null
+  // @ts-ignore
+  parsedData = null
+
+  const versionToSet = backupVersion ?? 1
+  logger.info(`Setting app initialization version to ${versionToSet} and running incremental migrations...`)
+  await preferenceService.set('app.initialization_version', versionToSet)
+  await runAppDataMigrations()
+
+  resetAppInitializationState()
+}
+
 export async function restore(
   backupFile: Omit<FileMetadata, 'md5'>,
   onProgress: OnProgressCallback,
@@ -278,43 +308,8 @@ export async function restore(
     // TODO: 长期方案 - 重构备份格式为分文件存储，避免读取大 JSON 文件
     // 当前依赖 android:largeHeap="true" 来处理大文件（>100MB）
     logger.info('Starting to read backup file, size:', dataFile.size, 'bytes')
-    let fileContent = await dataFile.text()
-
-    logger.info('Parsing and transforming backup data...')
-    let parsedData = transformBackupData(fileContent)
-
-    // 立即释放原始文件内容
-    // @ts-ignore - fileContent 不再需要
-    fileContent = null
-
-    logger.info('Restoring Redux data...')
-    await restoreReduxData(parsedData.reduxData, onProgress, dispatch, parsedData.webDavConfig)
-
-    // Redux 数据已写入，释放内存
-    // @ts-ignore
-    parsedData.reduxData = null
-
-    logger.info('Restoring IndexedDB data...')
-    await restoreIndexedDbData(parsedData.indexedData, onProgress, dispatch)
-
-    // 保存备份版本号用于后续迁移
-    const backupVersion = parsedData.appInitializationVersion
-
-    // IndexedDB 数据已写入，释放内存
-    // @ts-ignore
-    parsedData.indexedData = null
-    // @ts-ignore
-    parsedData = null
-
-    // 设置备份时的版本号（旧备份默认为 1，跳过初始 seed）
-    // 然后运行增量迁移（从 backupVersion+1 到 latest）
-    const versionToSet = backupVersion ?? 1
-    logger.info(`Setting app initialization version to ${versionToSet} and running incremental migrations...`)
-    await preferenceService.set('app.initialization_version', versionToSet)
-    await runAppDataMigrations()
-
-    // 刷新所有服务缓存，确保使用恢复后的数据
-    resetAppInitializationState()
+    const fileContent = await dataFile.text()
+    await restoreParsedBackupData(fileContent, onProgress, dispatch)
 
     logger.info('Restore completed successfully')
   } catch (error) {
