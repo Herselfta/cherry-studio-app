@@ -10,7 +10,7 @@ export type DataSourcesStackParamList = {
   DataSettingsScreen: undefined
   BasicDataSettingsScreen: undefined
   LanTransferScreen: { redirectToHome?: boolean } | undefined
-  WebDavScreen: { autoOpenRestoreSelection?: boolean } | undefined
+  WebDavScreen: { preloadRemoteFiles?: boolean } | undefined
 }
 
 const Stack = createNativeStackNavigator<DataSourcesStackParamList>()

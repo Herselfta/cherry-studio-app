@@ -59,7 +59,7 @@ export default function WebDavScreen() {
   const { t } = useTranslation()
   const route = useRoute<WebDavScreenRouteProp>()
   const storedConfig = getWebDavConfig()
-  const hasOpenedAutoRestoreRef = useRef(false)
+  const hasPreloadedRemoteFilesRef = useRef(false)
 
   const [host, setHost] = useState(storedConfig.host)
   const [user, setUser] = useState(storedConfig.user)
@@ -74,6 +74,8 @@ export default function WebDavScreen() {
   const [isLoadingMobileSyncs, setIsLoadingMobileSyncs] = useState(false)
   const [remoteBackups, setRemoteBackups] = useState<WebDavBackupFile[]>([])
   const [remoteMobileSyncFiles, setRemoteMobileSyncFiles] = useState<WebDavBackupFile[]>([])
+  const [hasLoadedRemoteBackups, setHasLoadedRemoteBackups] = useState(false)
+  const [hasLoadedRemoteMobileSyncFiles, setHasLoadedRemoteMobileSyncFiles] = useState(false)
 
   const draftConfig = useMemo(
     () => ({
@@ -268,15 +270,69 @@ export default function WebDavScreen() {
     }
   }
 
-  const handleRestoreSelection = useCallback(async () => {
-    const config = await ensureConfigReady()
-    if (!config) return
-
+  const loadRemoteBackups = useCallback(async (config: NonNullable<Awaited<ReturnType<typeof ensureConfigReady>>>) => {
     setIsLoadingBackups(true)
 
     try {
       const backups = await listWebDavBackupFiles(config)
       setRemoteBackups(backups)
+      setHasLoadedRemoteBackups(true)
+      return backups
+    } catch (error) {
+      logger.error('Failed to list WebDAV backups', error as Error)
+      throw error
+    } finally {
+      setIsLoadingBackups(false)
+    }
+  }, [])
+
+  const loadRemoteMobileSyncFiles = useCallback(
+    async (config: NonNullable<Awaited<ReturnType<typeof ensureConfigReady>>>) => {
+      setIsLoadingMobileSyncs(true)
+
+      try {
+        const files = await listWebDavMobileSyncFiles(config)
+        setRemoteMobileSyncFiles(files)
+        setHasLoadedRemoteMobileSyncFiles(true)
+        return files
+      } catch (error) {
+        logger.error('Failed to list WebDAV mobile sync files', error as Error)
+        throw error
+      } finally {
+        setIsLoadingMobileSyncs(false)
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
+    if (!route.params?.preloadRemoteFiles || hasPreloadedRemoteFilesRef.current) {
+      return
+    }
+
+    hasPreloadedRemoteFilesRef.current = true
+
+    void (async () => {
+      const config = await ensureConfigReady()
+      if (!config) return
+
+      try {
+        await Promise.all([loadRemoteBackups(config), loadRemoteMobileSyncFiles(config)])
+      } catch (error) {
+        presentDialog('error', {
+          title: t('common.error'),
+          content: (error as Error).message || t('common.error_occurred')
+        })
+      }
+    })()
+  }, [ensureConfigReady, loadRemoteBackups, loadRemoteMobileSyncFiles, route.params?.preloadRemoteFiles, t])
+
+  const handleRestoreSelection = useCallback(async () => {
+    const config = await ensureConfigReady()
+    if (!config) return
+
+    try {
+      const backups = hasLoadedRemoteBackups ? remoteBackups : await loadRemoteBackups(config)
 
       if (backups.length === 0) {
         presentDialog('info', {
@@ -288,25 +344,19 @@ export default function WebDavScreen() {
 
       presentSelectionSheet(REMOTE_BACKUP_SHEET_NAME)
     } catch (error) {
-      logger.error('Failed to list WebDAV backups', error as Error)
       presentDialog('error', {
         title: t('common.error'),
         content: (error as Error).message || t('common.error_occurred')
       })
-    } finally {
-      setIsLoadingBackups(false)
     }
-  }, [ensureConfigReady, t])
+  }, [ensureConfigReady, hasLoadedRemoteBackups, loadRemoteBackups, remoteBackups, t])
 
   const handleMobileSyncSelection = useCallback(async () => {
     const config = await ensureConfigReady()
     if (!config) return
 
-    setIsLoadingMobileSyncs(true)
-
     try {
-      const files = await listWebDavMobileSyncFiles(config)
-      setRemoteMobileSyncFiles(files)
+      const files = hasLoadedRemoteMobileSyncFiles ? remoteMobileSyncFiles : await loadRemoteMobileSyncFiles(config)
 
       if (files.length === 0) {
         presentDialog('info', {
@@ -318,24 +368,12 @@ export default function WebDavScreen() {
 
       presentSelectionSheet(REMOTE_MOBILE_SYNC_SHEET_NAME)
     } catch (error) {
-      logger.error('Failed to list WebDAV mobile sync files', error as Error)
       presentDialog('error', {
         title: t('common.error'),
         content: (error as Error).message || t('common.error_occurred')
       })
-    } finally {
-      setIsLoadingMobileSyncs(false)
     }
-  }, [ensureConfigReady, t])
-
-  useEffect(() => {
-    if (!route.params?.autoOpenRestoreSelection || hasOpenedAutoRestoreRef.current) {
-      return
-    }
-
-    hasOpenedAutoRestoreRef.current = true
-    void handleRestoreSelection()
-  }, [handleRestoreSelection, route.params?.autoOpenRestoreSelection])
+  }, [ensureConfigReady, hasLoadedRemoteMobileSyncFiles, loadRemoteMobileSyncFiles, remoteMobileSyncFiles, t])
 
   const handleRestoreBackup = (file: WebDavBackupFile) => {
     presentDialog('warning', {

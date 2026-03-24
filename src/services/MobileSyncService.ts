@@ -19,7 +19,7 @@ import type { WebSearchProvider } from '@/types/websearch'
 
 import { assistantService } from './AssistantService'
 import { getThemeModeFromBackupSettings, type ProgressUpdate } from './BackupService'
-import { buildMobileSyncAssistantPayload } from './mobileSyncUtils'
+import { buildMobileSyncAssistantPayload, normalizeMobileSyncExportTopics } from './mobileSyncUtils'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
 
@@ -185,15 +185,16 @@ export function isMobileSyncRemoteFile(fileName: string): boolean {
 }
 
 export async function exportMobileSyncPayload(): Promise<string> {
-  const [providers, websearchProviders, assistants, topics, messages, messageBlocks, mcpServers] = await Promise.all([
-    providerDatabase.getAllProviders(),
-    websearchProviderDatabase.getAllWebSearchProviders(),
-    assistantService.getAllAssistants(),
-    topicService.getTopics(),
-    messageDatabase.getAllMessages(),
-    messageBlockDatabase.getAllBlocks(),
-    mcpDatabase.getMcps()
-  ])
+  const [providers, websearchProviders, externalAssistants, topics, messages, messageBlocks, mcpServers] =
+    await Promise.all([
+      providerDatabase.getAllProviders(),
+      websearchProviderDatabase.getAllWebSearchProviders(),
+      assistantService.getExternalAssistants(),
+      topicService.getTopics(),
+      messageDatabase.getAllMessages(),
+      messageBlockDatabase.getAllBlocks(),
+      mcpDatabase.getMcps()
+    ])
 
   let defaultAssistant: Assistant | null = null
   try {
@@ -207,11 +208,21 @@ export async function exportMobileSyncPayload(): Promise<string> {
   const avatar = await preferenceService.get('user.avatar')
   const searchWithTime = await preferenceService.get('websearch.search_with_time')
   const maxResults = await preferenceService.get('websearch.max_results')
+  const mobileSyncAssistants = defaultAssistant ? [defaultAssistant, ...externalAssistants] : externalAssistants
+  const normalizedTopics = normalizeMobileSyncExportTopics({
+    assistants: mobileSyncAssistants,
+    messages,
+    topics
+  })
+  const normalizedTopicIds = new Set(normalizedTopics.map(topic => topic.id))
+  const normalizedMessages = messages.filter(message => normalizedTopicIds.has(message.topicId))
+  const normalizedMessageIds = new Set(normalizedMessages.map(message => message.id))
+  const normalizedMessageBlocks = messageBlocks.filter(block => normalizedMessageIds.has(block.messageId))
 
   const { defaultAssistant: syncDefaultAssistant, assistants: syncAssistants } = buildMobileSyncAssistantPayload({
-    assistants,
-    fallbackAssistants: defaultAssistant ? [defaultAssistant, ...getSystemAssistants()] : getSystemAssistants(),
-    topics
+    assistants: mobileSyncAssistants,
+    fallbackAssistants: defaultAssistant ? [defaultAssistant] : [getSystemAssistants()[0]],
+    topics: normalizedTopics
   })
 
   const payload: MobileSyncPayload = {
@@ -240,9 +251,9 @@ export async function exportMobileSyncPayload(): Promise<string> {
         theme,
         avatar: avatar || undefined
       },
-      topics: topics.map(toSyncTopic),
-      messages: messages.map(toSyncMessage),
-      messageBlocks: messageBlocks.map(toSyncMessageBlock),
+      topics: normalizedTopics.map(toSyncTopic),
+      messages: normalizedMessages.map(toSyncMessage),
+      messageBlocks: normalizedMessageBlocks.map(toSyncMessageBlock),
       localStorage: {}
     }
   }

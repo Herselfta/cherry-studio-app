@@ -951,6 +951,8 @@
           "description": "Sync only the shared mobile/desktop data subset over WebDAV without overwriting mobile-only state.",
           "empty": "No mobile sync files found",
           "from_webdav": "Sync from WebDAV",
+          "name_placeholder": "Enter a sync file name",
+          "name_title": "Sync to WebDAV",
           "remote_files": "Remote Sync Files",
           "title": "Phone Sync",
           "to_webdav": "Sync to WebDAV",

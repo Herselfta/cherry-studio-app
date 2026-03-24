@@ -951,6 +951,8 @@
           "description": "通过 WebDAV 同步手机与桌面都能识别的公共数据，不会覆盖移动端专属配置。",
           "empty": "未找到手机同步文件",
           "from_webdav": "从 WebDAV 同步",
+          "name_placeholder": "请输入同步文件名",
+          "name_title": "同步到 WebDAV",
           "remote_files": "远端同步文件",
           "title": "手机同步",
           "to_webdav": "同步到 WebDAV",

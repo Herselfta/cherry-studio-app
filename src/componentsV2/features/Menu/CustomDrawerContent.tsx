@@ -1,14 +1,15 @@
 import type { DrawerContentComponentProps } from '@react-navigation/drawer'
 import { Divider } from 'heroui-native'
-import React from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { View } from 'react-native'
 import { Uniwind } from 'uniwind'
 
 import { IconButton } from '@/componentsV2/base/IconButton'
+import { dismissDialog, presentDialog, TextField } from '@/componentsV2/index'
 import Image from '@/componentsV2/base/Image'
 import Text from '@/componentsV2/base/Text'
-import { Download, MarketIcon, MCPIcon, Palette, Settings } from '@/componentsV2/icons'
+import { Cloud, Download, MarketIcon, MCPIcon, Palette, Settings } from '@/componentsV2/icons'
 import PressableRow from '@/componentsV2/layout/PressableRow'
 import RowRightArrow from '@/componentsV2/layout/Row/RowRightArrow'
 import XStack from '@/componentsV2/layout/XStack'
@@ -20,7 +21,12 @@ import { useTheme } from '@/hooks/useTheme'
 import { useCurrentTopic } from '@/hooks/useTopic'
 import { loggerService } from '@/services/LoggerService'
 import { topicService } from '@/services/TopicService'
-import { getWebDavConfig, hasValidWebDavConfig } from '@/services/WebDavService'
+import {
+  backupMobileSyncToWebDav,
+  getWebDavConfig,
+  hasValidWebDavConfig,
+  normalizeMobileSyncWebDavFileName
+} from '@/services/WebDavService'
 import { ThemeMode } from '@/types'
 import type { Assistant } from '@/types/assistant'
 
@@ -35,6 +41,7 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
   const { avatar, userName, setTheme } = useSettings()
   const insets = useSafeArea()
   const { switchTopic } = useCurrentTopic()
+  const [mobileSyncFileName, setMobileSyncFileName] = useState(() => normalizeMobileSyncWebDavFileName())
 
   const { assistants, isLoading: isAssistantsLoading } = useAssistants()
 
@@ -61,7 +68,57 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
       screen: 'DataSourcesSettings',
       params: {
         screen: 'WebDavScreen',
-        params: hasConfiguredWebDav ? { autoOpenRestoreSelection: true } : undefined
+        params: hasConfiguredWebDav ? { preloadRemoteFiles: true } : undefined
+      }
+    })
+  }
+
+  const handleWebDavMobileSyncBackup = () => {
+    const config = getWebDavConfig()
+
+    if (!hasValidWebDavConfig(config)) {
+      props.navigation.navigate('Home', {
+        screen: 'DataSourcesSettings',
+        params: {
+          screen: 'WebDavScreen'
+        }
+      })
+      return
+    }
+
+    const nextDefaultFileName = normalizeMobileSyncWebDavFileName()
+    setMobileSyncFileName(nextDefaultFileName)
+
+    presentDialog('info', {
+      title: t('settings.webdav.sync.name_title'),
+      content: (
+        <YStack className="mt-3 gap-3">
+          <Text className="text-foreground-secondary text-sm">{t('settings.webdav.sync.description')}</Text>
+          <TextField>
+            <TextField.Input
+              className="h-12"
+              defaultValue={mobileSyncFileName || nextDefaultFileName}
+              placeholder={t('settings.webdav.sync.name_placeholder')}
+              onChangeText={setMobileSyncFileName}
+            />
+          </TextField>
+        </YStack>
+      ),
+      confirmText: t('common.confirm'),
+      showCancel: true,
+      cancelText: t('common.cancel'),
+      onConfirm: async () => {
+        const fileName = normalizeMobileSyncWebDavFileName(mobileSyncFileName || nextDefaultFileName)
+        const uploaded = await backupMobileSyncToWebDav(config, fileName)
+
+        setMobileSyncFileName(normalizeMobileSyncWebDavFileName())
+        dismissDialog()
+        presentDialog('success', {
+          title: t('common.success'),
+          content: t('settings.webdav.sync.upload_success', {
+            fileName: uploaded.fileName
+          })
+        })
       }
     })
   }
@@ -164,6 +221,7 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
         </PressableRow>
         <XStack className="items-center gap-5 pr-4">
           <IconButton icon={<Palette size={24} />} onPress={handleToggleTheme} />
+          <IconButton icon={<Cloud size={24} />} onPress={handleWebDavMobileSyncBackup} />
           <IconButton icon={<Download size={24} />} onPress={handleNavigateWebDavRestoreScreen} />
           <IconButton icon={<Settings size={24} />} onPress={handleNavigateSettingsScreen} />
         </XStack>

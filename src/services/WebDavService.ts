@@ -371,7 +371,26 @@ function buildMobileSyncFileName() {
   return `cherry-studio.mobile-sync.${timestamp}.mobile.json`
 }
 
-export async function backupMobileSyncToWebDav(config: Partial<WebDavConfig>) {
+export function normalizeMobileSyncWebDavFileName(fileName?: string) {
+  const trimmed = fileName?.trim()
+
+  if (!trimmed) {
+    return buildMobileSyncFileName()
+  }
+
+  if (isMobileSyncRemoteFile(trimmed)) {
+    return trimmed
+  }
+
+  const baseName = trimmed.replace(/\.json$/i, '')
+  const normalizedBaseName = baseName.startsWith('cherry-studio.')
+    ? baseName.replace(/^cherry-studio\./, 'cherry-studio.mobile-sync.')
+    : `cherry-studio.mobile-sync.${baseName}`
+
+  return `${normalizedBaseName}.json`
+}
+
+export async function backupMobileSyncToWebDav(config: Partial<WebDavConfig>, customFileName?: string) {
   const normalized = validateConfig(config)
   await ensureBackupDirectoryExists(normalized)
 
@@ -379,7 +398,7 @@ export async function backupMobileSyncToWebDav(config: Partial<WebDavConfig>) {
   // and desktop exchange the same portable payload instead of treating WebDAV as
   // another full-backup transport with platform-specific restore behavior.
   const payload = await exportMobileSyncPayload()
-  const fileName = buildMobileSyncFileName()
+  const fileName = normalizeMobileSyncWebDavFileName(customFileName)
 
   await webDavRequest(
     normalized,

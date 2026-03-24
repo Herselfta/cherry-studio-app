@@ -1,4 +1,5 @@
 import type { Assistant, Topic } from '@/types/assistant'
+import type { Message } from '@/types/message'
 
 type BuildMobileSyncAssistantPayloadParams = {
   assistants: Assistant[]
@@ -9,6 +10,12 @@ type BuildMobileSyncAssistantPayloadParams = {
 type MobileSyncAssistantPayload = {
   assistants: Assistant[]
   defaultAssistant: Assistant
+}
+
+type NormalizeMobileSyncExportTopicsParams = {
+  assistants: Assistant[]
+  messages: Message[]
+  topics: Topic[]
 }
 
 function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
@@ -25,6 +32,40 @@ function groupTopicsByAssistantId(topics: Topic[]) {
     result.set(topic.assistantId, mergeById(existing, [topic]))
     return result
   }, new Map())
+}
+
+function groupMessagesByTopicId(messages: Message[]) {
+  return messages.reduce<Map<string, Message[]>>((result, message) => {
+    const existing = result.get(message.topicId) || []
+    result.set(message.topicId, [...existing, message])
+    return result
+  }, new Map())
+}
+
+function resolveVisibleAssistantId(
+  topic: Pick<Topic, 'assistantId'> | undefined,
+  messages: Message[],
+  visibleAssistantIds: Set<string>
+) {
+  if (topic?.assistantId && visibleAssistantIds.has(topic.assistantId)) {
+    return topic.assistantId
+  }
+
+  return messages.map(message => message.assistantId).find(assistantId => visibleAssistantIds.has(assistantId))
+}
+
+function synthesizeTopic(topicId: string, assistantId: string, messages: Message[]): Topic {
+  const sortedMessages = [...messages].sort((left, right) => left.createdAt - right.createdAt)
+  const firstMessage = sortedMessages[0]
+  const lastMessage = sortedMessages.at(-1) || firstMessage
+
+  return {
+    id: topicId,
+    assistantId,
+    name: topicId,
+    createdAt: firstMessage?.createdAt || Date.now(),
+    updatedAt: lastMessage?.updatedAt || lastMessage?.createdAt || Date.now()
+  }
 }
 
 function createFallbackAssistant(assistantId: string, topics: Topic[], fallbackAssistants: Assistant[]): Assistant {
@@ -44,6 +85,45 @@ function createFallbackAssistant(assistantId: string, topics: Topic[], fallbackA
     topics,
     type: 'external'
   }
+}
+
+export function normalizeMobileSyncExportTopics({
+  assistants,
+  messages,
+  topics
+}: NormalizeMobileSyncExportTopicsParams): Topic[] {
+  const visibleAssistantIds = new Set(assistants.map(assistant => assistant.id))
+  const messagesByTopicId = groupMessagesByTopicId(messages)
+  const normalizedTopics = new Map<string, Topic>()
+
+  for (const topic of topics) {
+    const topicMessages = messagesByTopicId.get(topic.id) || []
+    const assistantId = resolveVisibleAssistantId(topic, topicMessages, visibleAssistantIds)
+
+    if (!assistantId) {
+      continue
+    }
+
+    normalizedTopics.set(topic.id, {
+      ...topic,
+      assistantId
+    })
+  }
+
+  for (const [topicId, topicMessages] of messagesByTopicId.entries()) {
+    if (normalizedTopics.has(topicId)) {
+      continue
+    }
+
+    const assistantId = resolveVisibleAssistantId(undefined, topicMessages, visibleAssistantIds)
+    if (!assistantId) {
+      continue
+    }
+
+    normalizedTopics.set(topicId, synthesizeTopic(topicId, assistantId, topicMessages))
+  }
+
+  return Array.from(normalizedTopics.values())
 }
 
 export function buildMobileSyncAssistantPayload({
