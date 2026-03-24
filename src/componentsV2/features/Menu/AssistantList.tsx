@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ActivityIndicator } from 'react-native'
 
 import Text from '@/componentsV2/base/Text'
-import EmojiAvatar from '@/componentsV2/features/Assistant/EmojiAvatar'
+import AssistantAvatar from '@/componentsV2/features/Assistant/AssistantAvatar'
 import PressableRow from '@/componentsV2/layout/PressableRow'
 import XStack from '@/componentsV2/layout/XStack'
 import YStack from '@/componentsV2/layout/YStack'
@@ -32,8 +32,8 @@ function AssistantListItem({ assistant, onPress }: AssistantListItemProps) {
   return (
     <PressableRow className="flex-row items-center justify-between rounded-xl p-0" onPress={() => onPress(assistant)}>
       <XStack className="flex-1 items-center gap-3 pr-3">
-        <EmojiAvatar
-          emoji={assistant.emoji}
+        <AssistantAvatar
+          assistant={assistant}
           size={46}
           borderRadius={18}
           borderWidth={3}

@@ -14,6 +14,7 @@ export type Assistant = {
   topics: Topic[]
   type: 'system' | 'built_in' | 'external'
   emoji?: string
+  avatar?: string
   description?: string
   model?: Model
   defaultModel?: Model

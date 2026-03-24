@@ -4,6 +4,7 @@ import { seedDatabase } from '@db/seeding'
 import * as Localization from 'expo-localization'
 
 import { getSystemAssistants } from '@/config/assistants'
+import { normalizeLanguageTag } from '@/config/languages'
 import { initBuiltinMcp } from '@/config/mcp'
 import { SYSTEM_PROVIDERS, SYSTEM_PROVIDERS_CONFIG } from '@/config/providers'
 import { getWebSearchProviders } from '@/config/websearchProviders'
@@ -45,8 +46,13 @@ const APP_DATA_MIGRATIONS: AppDataMigration[] = [
       await websearchProviderDatabase.upsertWebSearchProviders(websearchProviders)
 
       const locales = Localization.getLocales()
-      if (locales.length > 0) {
-        storage.set('language', locales[0]?.languageTag)
+      if (locales.length > 0 || storage.getString('language')) {
+        // Reset/restore flows re-run the v1 seed before replaying backup data.
+        // Keep any existing in-app language instead of blindly overwriting it
+        // with the device locale, otherwise a Chinese app can be reset to
+        // English before backup language restoration runs.
+        const resolvedLanguage = normalizeLanguageTag(storage.getString('language') || locales[0]?.languageTag)
+        storage.set('language', resolvedLanguage)
       }
 
       const builtinMcp = initBuiltinMcp()

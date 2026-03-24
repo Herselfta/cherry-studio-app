@@ -8,7 +8,7 @@ import { View } from 'react-native'
 import ContextMenu, { type ContextMenuListProps } from '@/componentsV2/base/ContextMenu'
 import { presentDialog } from '@/componentsV2/base/Dialog/useDialogManager'
 import Text from '@/componentsV2/base/Text'
-import EmojiAvatar from '@/componentsV2/features/Assistant/EmojiAvatar'
+import AssistantAvatar from '@/componentsV2/features/Assistant/AssistantAvatar'
 import { ExportOptionsContent } from '@/componentsV2/features/TopicItem/ExportOptionsContent'
 import { RenameTopicContent } from '@/componentsV2/features/TopicItem/RenameTopicContent'
 import XStack from '@/componentsV2/layout/XStack'
@@ -243,8 +243,8 @@ export const TopicItem: FC<TopicItemProps> = ({
             {isSelected && <Check size={14} />}
           </View>
         )}
-        <EmojiAvatar
-          emoji={assistant?.emoji}
+        <AssistantAvatar
+          assistant={assistant}
           size={42}
           borderRadius={16}
           borderWidth={3}

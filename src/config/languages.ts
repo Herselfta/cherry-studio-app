@@ -14,3 +14,45 @@ export const languagesOptions: { value: LanguageVarious; label: string; flag: st
 ]
 
 export const defaultLanguage = 'en-US'
+
+export function normalizeLanguageTag(language?: string | null): LanguageVarious {
+  const normalized = language?.trim()
+
+  if (!normalized) {
+    return defaultLanguage
+  }
+
+  const lowerCaseLanguage = normalized.toLowerCase()
+
+  if (
+    lowerCaseLanguage.startsWith('zh-tw') ||
+    lowerCaseLanguage.startsWith('zh-hk') ||
+    lowerCaseLanguage.startsWith('zh-hant')
+  ) {
+    return 'zh-Hans-TW'
+  }
+
+  if (
+    lowerCaseLanguage.startsWith('zh-cn') ||
+    lowerCaseLanguage.startsWith('zh-sg') ||
+    lowerCaseLanguage.startsWith('zh-hans') ||
+    lowerCaseLanguage === 'zh'
+  ) {
+    return 'zh-Hans-CN'
+  }
+
+  if (lowerCaseLanguage.startsWith('en')) {
+    return 'en-US'
+  }
+
+  if (lowerCaseLanguage.startsWith('ja')) {
+    return 'ja-JP'
+  }
+
+  if (lowerCaseLanguage.startsWith('ru')) {
+    return 'ru-RU'
+  }
+
+  const supportedLanguage = languagesOptions.find(option => option.value === normalized)
+  return supportedLanguage?.value || defaultLanguage
+}

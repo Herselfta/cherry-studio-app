@@ -1,5 +1,3 @@
-import type { Dispatch } from '@reduxjs/toolkit'
-
 import {
   assistantDatabase,
   mcpDatabase,
@@ -9,6 +7,9 @@ import {
   topicDatabase,
   websearchProviderDatabase
 } from '@database'
+import type { Dispatch } from '@reduxjs/toolkit'
+
+import { getSystemAssistants } from '@/config/assistants'
 import { loggerService } from '@/services/LoggerService'
 import { preferenceService } from '@/services/PreferenceService'
 import type { Assistant, Provider, Topic } from '@/types/assistant'
@@ -16,8 +17,9 @@ import type { MCPServer } from '@/types/mcp'
 import type { Message, MessageBlock } from '@/types/message'
 import type { WebSearchProvider } from '@/types/websearch'
 
-import { getThemeModeFromBackupSettings, type ProgressUpdate } from './BackupService'
 import { assistantService } from './AssistantService'
+import { getThemeModeFromBackupSettings, type ProgressUpdate } from './BackupService'
+import { buildMobileSyncAssistantPayload } from './mobileSyncUtils'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
 
@@ -88,6 +90,7 @@ function sanitizeAssistantForSync(assistant: Assistant): Assistant {
     prompt: assistant.prompt,
     type: assistant.type,
     emoji: assistant.emoji,
+    avatar: assistant.avatar,
     description: assistant.description,
     model: assistant.model,
     defaultModel: assistant.defaultModel,
@@ -162,9 +165,9 @@ function toSyncMessageBlock(block: MessageBlock): SyncMessageBlock {
 function isMobileSyncPayloadObject(payload: unknown): payload is MobileSyncPayload {
   return Boolean(
     payload &&
-      typeof payload === 'object' &&
-      (payload as MobileSyncPayload).schema === MOBILE_SYNC_SCHEMA &&
-      typeof (payload as MobileSyncPayload).version === 'number'
+    typeof payload === 'object' &&
+    (payload as MobileSyncPayload).schema === MOBILE_SYNC_SCHEMA &&
+    typeof (payload as MobileSyncPayload).version === 'number'
   )
 }
 
@@ -185,7 +188,7 @@ export async function exportMobileSyncPayload(): Promise<string> {
   const [providers, websearchProviders, assistants, topics, messages, messageBlocks, mcpServers] = await Promise.all([
     providerDatabase.getAllProviders(),
     websearchProviderDatabase.getAllWebSearchProviders(),
-    assistantService.getExternalAssistants(),
+    assistantService.getAllAssistants(),
     topicService.getTopics(),
     messageDatabase.getAllMessages(),
     messageBlockDatabase.getAllBlocks(),
@@ -205,13 +208,11 @@ export async function exportMobileSyncPayload(): Promise<string> {
   const searchWithTime = await preferenceService.get('websearch.search_with_time')
   const maxResults = await preferenceService.get('websearch.max_results')
 
-  const topicsByAssistantId = topics.reduce<Record<string, Topic[]>>((result, topic) => {
-    if (!result[topic.assistantId]) {
-      result[topic.assistantId] = []
-    }
-    result[topic.assistantId].push(topic)
-    return result
-  }, {})
+  const { defaultAssistant: syncDefaultAssistant, assistants: syncAssistants } = buildMobileSyncAssistantPayload({
+    assistants,
+    fallbackAssistants: defaultAssistant ? [defaultAssistant, ...getSystemAssistants()] : getSystemAssistants(),
+    topics
+  })
 
   const payload: MobileSyncPayload = {
     schema: MOBILE_SYNC_SCHEMA,
@@ -220,21 +221,8 @@ export async function exportMobileSyncPayload(): Promise<string> {
     exportedAt: Date.now(),
     data: {
       assistants: {
-        defaultAssistant: sanitizeAssistantForSync(
-          defaultAssistant || {
-            id: 'default',
-            name: 'Default Assistant',
-            prompt: '',
-            type: 'system',
-            topics: topicsByAssistantId.default || []
-          }
-        ),
-        assistants: assistants.map((assistant) =>
-          sanitizeAssistantForSync({
-            ...assistant,
-            topics: topicsByAssistantId[assistant.id] || assistant.topics || []
-          })
-        )
+        defaultAssistant: sanitizeAssistantForSync(syncDefaultAssistant),
+        assistants: syncAssistants.map(sanitizeAssistantForSync)
       },
       llm: {
         providers
@@ -265,11 +253,7 @@ export async function exportMobileSyncPayload(): Promise<string> {
   return JSON.stringify(payload)
 }
 
-export async function importMobileSyncPayload(
-  payload: string,
-  onProgress: OnProgressCallback,
-  _dispatch: Dispatch
-) {
+export async function importMobileSyncPayload(payload: string, onProgress: OnProgressCallback, _dispatch: Dispatch) {
   const parsed = JSON.parse(payload) as unknown
   if (!isMobileSyncPayloadObject(parsed)) {
     throw new Error('Invalid mobile sync payload')
@@ -289,7 +273,7 @@ export async function importMobileSyncPayload(
     (assistant, index) =>
       ({
         ...assistant,
-        topics: (assistant.topics || []).map((topic) => toMobileTopic(topic as unknown as SyncTopic)),
+        topics: (assistant.topics || []).map(topic => toMobileTopic(topic as unknown as SyncTopic)),
         type: index === 0 ? 'system' : 'external'
       }) as Assistant
   )

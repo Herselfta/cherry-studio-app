@@ -161,11 +161,14 @@ function SettingItem({ title, screen, icon, specificScreen }: SettingItemProps) 
   const renderIcon = () => {
     if (typeof icon === 'string') {
       return (
-        <Image
-          source={icon ? { uri: icon } : require('@/assets/images/favicon.png')}
-          className="h-10 w-10 rounded-full"
-          accessibilityLabel={title}
-        />
+        <View className="h-10 w-10 overflow-hidden rounded-full">
+          <Image
+            source={icon ? { uri: icon } : require('@/assets/images/favicon.png')}
+            className="h-full w-full"
+            resizeMode="cover"
+            accessibilityLabel={title}
+          />
+        </View>
       )
     }
 

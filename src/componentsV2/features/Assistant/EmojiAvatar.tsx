@@ -60,7 +60,27 @@ const EmojiAvatar = ({
         }}
       />
       {/* 前景清晰emoji */}
-      <Text style={{ fontSize: size * 0.5, lineHeight: size * 0.8 }}>{formateEmoji(emoji)}</Text>
+      <View
+        pointerEvents="none"
+        style={{
+          height: size - borderWidth * 2,
+          width: size - borderWidth * 2,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+        <Text
+          numberOfLines={1}
+          allowFontScaling={false}
+          style={{
+            width: size - borderWidth * 2,
+            fontSize: size * 0.44,
+            lineHeight: size * 0.44,
+            textAlign: 'center',
+            includeFontPadding: false
+          }}>
+          {formateEmoji(emoji)}
+        </Text>
+      </View>
     </View>
   )
 }

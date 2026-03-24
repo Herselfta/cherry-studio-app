@@ -153,10 +153,13 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
 
       <XStack className="items-center justify-between">
         <PressableRow className="items-center gap-2.5" onPress={handleNavigatePersonalScreen}>
-          <Image
-            className="h-12 w-12 rounded-full"
-            source={avatar ? { uri: avatar } : require('@/assets/images/favicon.png')}
-          />
+          <View className="h-12 w-12 overflow-hidden rounded-full">
+            <Image
+              className="h-full w-full"
+              resizeMode="cover"
+              source={avatar ? { uri: avatar } : require('@/assets/images/favicon.png')}
+            />
+          </View>
           <Text className="text-base">{userName || t('common.cherry_studio')}</Text>
         </PressableRow>
         <XStack className="items-center gap-5 pr-4">

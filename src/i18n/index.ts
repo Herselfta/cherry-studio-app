@@ -3,7 +3,7 @@ import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import { Platform } from 'react-native'
 
-import { defaultLanguage } from '@/config/languages'
+import { defaultLanguage, normalizeLanguageTag } from '@/config/languages'
 import { storage } from '@/utils'
 
 import enUS from './locales/en-us.json'
@@ -31,7 +31,7 @@ export const getLanguage = async () => {
     savedLanguage = Localization.getLocales()[0]?.languageTag
   }
 
-  return savedLanguage
+  return normalizeLanguageTag(savedLanguage)
 }
 
 export const getLanguageCode = async () => {

@@ -21,7 +21,7 @@ import { uuid } from '@/utils'
 import { isIOS, isIOS26 } from '@/utils/device'
 import { formateEmoji } from '@/utils/formats'
 
-import EmojiAvatar from './EmojiAvatar'
+import AssistantAvatar from './AssistantAvatar'
 import GroupTag from './GroupTag'
 
 const SHEET_NAME = 'assistant-item-sheet'
@@ -185,8 +185,8 @@ const AssistantItemSheet: React.FC = () => {
             {/* Header with emoji and groups */}
             <YStack className="items-center justify-center gap-5">
               <View className="mt-5">
-                <EmojiAvatar
-                  emoji={assistant.emoji}
+                <AssistantAvatar
+                  assistant={assistant}
                   size={120}
                   borderWidth={5}
                   borderColor={isDark ? '#333333' : '#ffffff'}

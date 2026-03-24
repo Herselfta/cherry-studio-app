@@ -1,11 +1,13 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import React from 'react'
-import { Pressable } from 'react-native'
+import { Pressable, View } from 'react-native'
 import type { EmojiType } from 'rn-emoji-keyboard'
 import EmojiPicker from 'rn-emoji-keyboard'
 
+import Image from '@/componentsV2/base/Image'
 import YStack from '@/componentsV2/layout/YStack'
 import { useTheme } from '@/hooks/useTheme'
+import { isEmoji } from '@/utils/naming'
 
 import Text from '../Text'
 
@@ -28,11 +30,13 @@ export function AvatarEditButton({
   editIcon,
   size = 120,
   editButtonSize = 40,
+  onEditPress,
   updateAvatar
 }: AvatarEditButtonProps) {
   const { isDark } = useTheme()
-  const isEmoji = typeof content === 'string'
   const [isOpen, setIsOpen] = React.useState<boolean>(false)
+  const isEmojiContent = typeof content === 'string' && isEmoji(content)
+  const isImageContent = typeof content === 'string' && !isEmojiContent
 
   const handlePick = async (emoji: EmojiType) => {
     setIsOpen(prev => !prev)
@@ -49,18 +53,25 @@ export function AvatarEditButton({
           height: size,
           justifyContent: 'center',
           alignItems: 'center',
-          opacity: pressed ? 0.8 : 1,
-          ...(!isEmoji && {
-            paddingTop: 12,
-            paddingLeft: 19
-          })
+          opacity: pressed ? 0.8 : 1
         })}>
-        {isEmoji ? (
+        {isEmojiContent ? (
           <Text style={{ fontSize: size * 0.5, lineHeight: size * 0.65 }} className="text-foreground">
             {content}
           </Text>
+        ) : isImageContent ? (
+          <Image source={{ uri: content }} resizeMode="cover" className="h-full w-full" />
         ) : (
-          content
+          <View
+            pointerEvents="none"
+            style={{
+              width: '100%',
+              height: '100%',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+            {content}
+          </View>
         )}
       </Pressable>
 
@@ -81,7 +92,18 @@ export function AvatarEditButton({
             justifyContent: 'center',
             alignItems: 'center'
           }}>
-          {editIcon}
+          <Pressable
+            onPress={() => onEditPress?.()}
+            disabled={!onEditPress}
+            style={({ pressed }) => ({
+              width: editButtonSize,
+              height: editButtonSize,
+              justifyContent: 'center',
+              alignItems: 'center',
+              opacity: pressed ? 0.85 : 1
+            })}>
+            {editIcon}
+          </Pressable>
         </LinearGradient>
       </YStack>
       <EmojiPicker

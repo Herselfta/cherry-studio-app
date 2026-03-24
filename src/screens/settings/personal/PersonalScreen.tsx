@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { Card } from 'heroui-native'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Pressable } from 'react-native'
+import { Pressable, View } from 'react-native'
 
 import {
   Container,
@@ -60,10 +60,13 @@ export default function PersonalScreen() {
             <XStack className="mt-2 items-center justify-center">
               <Pressable onPress={handleAvatarPress} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
                 <XStack className="relative">
-                  <Image
-                    className="h-24 w-24 rounded-full"
-                    source={avatar ? { uri: avatar } : require('@/assets/images/favicon.png')}
-                  />
+                  <View className="h-24 w-24 overflow-hidden rounded-full">
+                    <Image
+                      className="h-full w-full"
+                      resizeMode="cover"
+                      source={avatar ? { uri: avatar } : require('@/assets/images/favicon.png')}
+                    />
+                  </View>
                   <XStack className="absolute bottom-0 right-0 rounded-full border-2 border-white bg-sky-500 p-1.5">
                     <Camera className="text-white" size={14} />
                   </XStack>

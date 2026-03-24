@@ -143,7 +143,10 @@ export default function BasicDataSettingsScreen() {
   const handleExportMobileSync = async () => {
     try {
       const payload = await exportMobileSyncPayload()
-      const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[-:T.Z]/g, '')
+        .slice(0, 14)
       const tempFile = await saveTextAsFile(payload, `cherry-studio.mobile-sync.${timestamp}`)
       await saveFileToFolder(tempFile.path, `cherry-studio.mobile-sync.${timestamp}.json`, 'application/json')
     } catch (error) {

@@ -9,7 +9,7 @@ import { useTheme } from '@/hooks/useTheme'
 import type { Assistant } from '@/types/assistant'
 import { formateEmoji } from '@/utils/formats'
 
-import EmojiAvatar from './EmojiAvatar'
+import AssistantAvatar from './AssistantAvatar'
 import GroupTag from './GroupTag'
 
 interface AssistantItemCardProps {
@@ -55,7 +55,12 @@ const AssistantItemCard = ({ assistant, onAssistantPress }: AssistantItemCardPro
         />
 
         <YStack className="flex-1 items-center gap-2 rounded-2xl px-3.5 py-4">
-          <EmojiAvatar emoji={assistant.emoji} size={90} borderWidth={5} borderColor={isDark ? '#333333' : '#f7f7f7'} />
+          <AssistantAvatar
+            assistant={assistant}
+            size={90}
+            borderWidth={5}
+            borderColor={isDark ? '#333333' : '#f7f7f7'}
+          />
           <Text className="text-foreground text-center text-base" numberOfLines={1} ellipsizeMode="tail">
             {assistant.name}
           </Text>

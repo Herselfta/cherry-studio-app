@@ -20,7 +20,7 @@ import { topicService } from '@/services/TopicService'
 import type { Assistant } from '@/types/assistant'
 import type { DrawerNavigationProps } from '@/types/naviagate'
 
-import EmojiAvatar from './EmojiAvatar'
+import AssistantAvatar from './AssistantAvatar'
 
 const logger = loggerService.withContext('Assistant Item')
 
@@ -116,8 +116,8 @@ const AssistantItem: FC<AssistantItemProps> = ({
               {isSelected && <Check size={14} />}
             </View>
           )}
-          <EmojiAvatar
-            emoji={assistant.emoji}
+          <AssistantAvatar
+            assistant={assistant}
             size={46}
             borderRadius={18}
             borderWidth={3}

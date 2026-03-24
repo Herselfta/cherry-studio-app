@@ -1,5 +1,6 @@
 import type { RouteProp } from '@react-navigation/native'
 import { useNavigation, useRoute } from '@react-navigation/native'
+import * as ImagePicker from 'expo-image-picker'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { ActivityIndicator, View } from 'react-native'
@@ -10,6 +11,7 @@ import {
   Container,
   DrawerGestureWrapper,
   HeaderBar,
+  presentDialog,
   SafeAreaContainer,
   Text,
   XStack
@@ -22,6 +24,7 @@ import { useCurrentTopic } from '@/hooks/useTopic'
 import AssistantDetailTabNavigator from '@/navigators/AssistantDetailTabNavigator'
 import { loggerService } from '@/services/LoggerService'
 import type { AssistantDetailScreenParams, DrawerNavigationProps } from '@/types/naviagate'
+import { isEmoji } from '@/utils/naming'
 const logger = loggerService.withContext('AssistantDetailScreen')
 
 type AssistantDetailRouteProp = RouteProp<
@@ -38,6 +41,8 @@ export default function AssistantDetailScreen() {
   const { assistant, isLoading, updateAssistant } = useAssistant(assistantId)
   const panGesture = useSwipeGesture()
   const { currentTopicId } = useCurrentTopic()
+
+  const hasCustomAvatar = Boolean(assistant?.avatar || assistant?.emoji)
 
   const handleBackPress = React.useCallback(() => {
     if (returnTo === 'chat') {
@@ -57,15 +62,50 @@ export default function AssistantDetailScreen() {
     navigation.goBack()
   }, [currentTopicId, navigation, returnTo, topicId])
 
-  const updateAvatar = async (avatar: string) => {
-    if (!assistant) return
+  const updateAvatar = React.useCallback(
+    async (avatar: string) => {
+      if (!assistant) return
 
+      try {
+        await updateAssistant({
+          ...assistant,
+          avatar,
+          emoji: isEmoji(avatar) ? avatar : assistant.emoji
+        })
+      } catch (error) {
+        logger.error('Failed to update avatar', error)
+      }
+    },
+    [assistant, updateAssistant]
+  )
+
+  const handleImageAvatarPick = React.useCallback(async () => {
     try {
-      await updateAssistant({ ...assistant, emoji: avatar })
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: false,
+        base64: true,
+        quality: 0.8
+      })
+
+      if (result.canceled || !result.assets?.length) {
+        return
+      }
+
+      const selectedImage = result.assets[0]
+      if (!selectedImage.base64) {
+        return
+      }
+
+      await updateAvatar(`data:image/jpeg;base64,${selectedImage.base64}`)
     } catch (error) {
-      logger.error('Failed to update avatar', error)
+      presentDialog('error', {
+        title: t('common.error_occurred'),
+        content: 'Failed to pick image'
+      })
+      logger.error('Failed to pick assistant avatar image', error as Error)
     }
-  }
+  }, [t, updateAvatar])
 
   if (isLoading) {
     return (
@@ -96,16 +136,16 @@ export default function AssistantDetailScreen() {
       <GestureDetector gesture={panGesture}>
         <View collapsable={false} className="flex-1">
           <HeaderBar
-            title={!assistant?.emoji ? t('assistants.title.create') : t('assistants.title.edit')}
+            title={!hasCustomAvatar ? t('assistants.title.create') : t('assistants.title.edit')}
             onBackPress={handleBackPress}
           />
           <View className="flex-1">
             <Container>
               <XStack className="items-center justify-center pb-5">
                 <AvatarEditButton
-                  content={assistant?.emoji || <DefaultProviderIcon />}
-                  editIcon={assistant?.emoji ? <ArrowLeftRight size={24} /> : <PenLine size={24} />}
-                  onEditPress={() => {}}
+                  content={assistant?.avatar || assistant?.emoji || <DefaultProviderIcon />}
+                  editIcon={hasCustomAvatar ? <ArrowLeftRight size={24} /> : <PenLine size={24} />}
+                  onEditPress={handleImageAvatarPick}
                   updateAvatar={updateAvatar}
                 />
               </XStack>

@@ -5,13 +5,15 @@ import { Pressable } from 'react-native'
 import SelectionDropdown, { type SelectionDropdownItem } from '@/componentsV2/base/SelectionDropdown'
 import Text from '@/componentsV2/base/Text'
 import { ChevronsUpDown } from '@/componentsV2/icons'
-import { defaultLanguage, languagesOptions } from '@/config/languages'
+import { defaultLanguage, languagesOptions, normalizeLanguageTag } from '@/config/languages'
 import { useBuiltInAssistants } from '@/hooks/useAssistant'
 import { storage } from '@/utils'
 
 export function LanguageDropdown() {
   const { i18n } = useTranslation()
-  const [currentLanguage, setCurrentLanguage] = useState<string>(storage.getString('language') || defaultLanguage)
+  const [currentLanguage, setCurrentLanguage] = useState<string>(
+    normalizeLanguageTag(storage.getString('language') || defaultLanguage)
+  )
   const { resetBuiltInAssistants } = useBuiltInAssistants()
 
   const handleLanguageChange = async (langCode: string) => {

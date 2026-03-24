@@ -13,9 +13,12 @@ import { Directory, File, Paths } from 'expo-file-system'
 import { unzip, zip } from 'react-native-zip-archive'
 
 import { getSystemAssistants } from '@/config/assistants'
+import { normalizeLanguageTag } from '@/config/languages'
 import { DEFAULT_BACKUP_STORAGE, DEFAULT_DOCUMENTS_STORAGE } from '@/constants/storage'
+import i18n from '@/i18n'
 import { loggerService } from '@/services/LoggerService'
 import { preferenceService } from '@/services/PreferenceService'
+import type { LanguageVarious } from '@/types'
 import { ThemeMode } from '@/types'
 import type { Assistant, Topic } from '@/types/assistant'
 import type {
@@ -27,6 +30,7 @@ import type {
 } from '@/types/databackup'
 import type { FileMetadata } from '@/types/file'
 import type { Message } from '@/types/message'
+import { storage } from '@/utils'
 
 import { resetAppInitializationState, runAppDataMigrations } from './AppInitializationService'
 import { assistantService } from './AssistantService'
@@ -376,6 +380,7 @@ async function restoreReduxData(
 async function restoreParsedBackupData(data: string, onProgress: OnProgressCallback, dispatch: Dispatch) {
   logger.info('Parsing and transforming backup data...')
   let parsedData = transformBackupData(data)
+  const portableLanguage = parsedData.portableLanguage
 
   logger.info('Restoring Redux data...')
   await restoreReduxData(parsedData.reduxData, onProgress, dispatch, parsedData.webDavConfig)
@@ -401,6 +406,15 @@ async function restoreParsedBackupData(data: string, onProgress: OnProgressCallb
   await runAppDataMigrations()
 
   resetAppInitializationState()
+
+  if (portableLanguage) {
+    // Desktop migration payloads may carry desktop-style locale tags such as
+    // zh-CN/zh-TW. Normalize and re-apply them after the seed/reset flow so the
+    // restore process does not leave the running app stuck on the device default
+    // language (commonly English on test devices).
+    storage.set('language', portableLanguage)
+    await i18n.changeLanguage(portableLanguage)
+  }
 }
 
 export async function restore(
@@ -448,6 +462,8 @@ export function transformBackupData(data: string): {
   indexedData: ExportIndexedData
   appInitializationVersion?: number
   webDavConfig?: WebDavConfig | null
+  portableLanguage?: LanguageVarious
+  source: NormalizedBackupAssistants['source']
 } {
   let orginalData: any
 
@@ -480,10 +496,13 @@ export function transformBackupData(data: string): {
     localStorage: localStorageData,
     settings: settingsData
   })
+  const portableLanguage =
+    typeof localStorageData?.language === 'string' ? normalizeLanguageTag(localStorageData.language) : undefined
   localStorageData = null
 
+  const assistantsState: ImportReduxData['assistants'] = JSON.parse(rawReduxData.assistants)
   const reduxData: ImportReduxData = {
-    assistants: JSON.parse(rawReduxData.assistants),
+    assistants: assistantsState,
     llm: JSON.parse(rawReduxData.llm),
     websearch: JSON.parse(rawReduxData.websearch),
     settings: settingsData,
@@ -557,7 +576,9 @@ export function transformBackupData(data: string): {
     reduxData: reduxData,
     indexedData: indexedDbData,
     appInitializationVersion,
-    webDavConfig
+    webDavConfig,
+    portableLanguage,
+    source: isDesktopMigrationAssistantsState(assistantsState) ? 'desktop-migration' : 'app-native'
   }
 }
 
@@ -585,6 +606,7 @@ async function getAllData(): Promise<string> {
     const appInitializationVersion = await preferenceService.get('app.initialization_version')
     const themeMode = await preferenceService.get('ui.theme_mode')
     const webDavConfig = getStoredWebDavConfig()
+    const currentLanguage = storage.getString('language')
 
     const defaultAssistant =
       systemAssistants.find(assistant => assistant.id === 'default') || systemAssistants[0] || null
@@ -660,6 +682,10 @@ async function getAllData(): Promise<string> {
     const localStorage: Record<string, string> = {
       'persist:cherry-studio': persistDataString,
       [WEBDAV_CONFIG_STORAGE_KEY]: JSON.stringify(webDavConfig)
+    }
+
+    if (currentLanguage) {
+      localStorage.language = normalizeLanguageTag(currentLanguage)
     }
 
     const messagesByTopic = messages.reduce<Record<string, Message[]>>((accumulator, message) => {

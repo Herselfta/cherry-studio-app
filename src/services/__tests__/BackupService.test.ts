@@ -106,6 +106,35 @@ describe('BackupService.transformBackupData', () => {
     expect(parsed.reduxData.settings.theme).toBe('dark')
   })
 
+  it('normalizes portable language from desktop migration localStorage', () => {
+    const backupData = JSON.stringify({
+      localStorage: {
+        language: 'zh-CN',
+        'persist:cherry-studio': JSON.stringify({
+          assistants: JSON.stringify({
+            defaultAssistant: { id: 'default', topics: [] },
+            assistants: []
+          }),
+          llm: JSON.stringify({ providers: [] }),
+          websearch: JSON.stringify({ providers: [] }),
+          settings: JSON.stringify({
+            userName: 'Desktop User',
+            theme: 'dark'
+          })
+        })
+      },
+      indexedDB: {
+        topics: [],
+        message_blocks: [],
+        settings: []
+      }
+    })
+
+    const parsed = transformBackupData(backupData)
+
+    expect(parsed.portableLanguage).toBe('zh-Hans-CN')
+  })
+
   it('prefers desktop default assistant payload over seeded mobile default when restoring migration backups', () => {
     const normalized = normalizeAssistantsFromBackup({
       defaultAssistant: {
@@ -152,6 +181,40 @@ describe('BackupService.transformBackupData', () => {
         type: 'external'
       })
     ])
+  })
+
+  it('restores desktop default assistant while seeding missing mobile-only system assistants', () => {
+    const normalized = normalizeAssistantsFromBackup({
+      defaultAssistant: {
+        id: 'default',
+        name: 'Desktop Fallback',
+        emoji: '🙂',
+        prompt: '',
+        topics: [],
+        type: 'assistant'
+      },
+      assistants: [
+        {
+          id: 'default',
+          name: 'Desktop Custom Default',
+          emoji: '🤖',
+          prompt: '',
+          topics: [],
+          type: 'assistant'
+        }
+      ]
+    })
+
+    expect(normalized.source).toBe('desktop-migration')
+    expect(normalized.systemAssistants.find(assistant => assistant.id === 'default')).toEqual(
+      expect.objectContaining({ id: 'default', name: 'Desktop Custom Default', emoji: '🤖' })
+    )
+    expect(normalized.systemAssistants.find(assistant => assistant.id === 'quick')).toEqual(
+      expect.objectContaining({ id: 'quick', name: 'Mobile Quick', emoji: '🏷️' })
+    )
+    expect(normalized.systemAssistants.find(assistant => assistant.id === 'translate')).toEqual(
+      expect.objectContaining({ id: 'translate', name: 'Mobile Translate', emoji: '🌐' })
+    )
   })
 
   it('keeps system assistant topic metadata when backup includes systemAssistants', () => {

@@ -1,5 +1,6 @@
 import * as Localization from 'expo-localization'
 
+import { normalizeLanguageTag } from '@/config/languages'
 import { SYSTEM_MODELS } from '@/config/models/default'
 import assistantsEnJsonData from '@/resources/data/assistants-en.json'
 import assistantsZhJsonData from '@/resources/data/assistants-zh.json'
@@ -24,11 +25,7 @@ export function getSystemAssistantDefaultModel(assistantId: SystemAssistantId | 
 }
 
 export function getSystemAssistants(): Assistant[] {
-  let language = storage.getString('language')
-
-  if (!language) {
-    language = Localization.getLocales()[0]?.languageTag
-  }
+  const language = normalizeLanguageTag(storage.getString('language') || Localization.getLocales()[0]?.languageTag)
 
   const isEnglish = language?.includes('en')
   // Each system assistant has its own fallback model. Collapsing them to one shared
@@ -82,11 +79,7 @@ export function getSystemAssistants(): Assistant[] {
 }
 
 export function getBuiltInAssistants(): Assistant[] {
-  let language = storage.getString('language')
-
-  if (!language) {
-    language = Localization.getLocales()[0]?.languageTag
-  }
+  const language = normalizeLanguageTag(storage.getString('language') || Localization.getLocales()[0]?.languageTag)
 
   try {
     if (assistantsEnJsonData && language?.includes('en')) {
