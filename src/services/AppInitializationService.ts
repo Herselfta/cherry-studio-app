@@ -7,6 +7,7 @@ import { getSystemAssistants } from '@/config/assistants'
 import { initBuiltinMcp } from '@/config/mcp'
 import { SYSTEM_PROVIDERS, SYSTEM_PROVIDERS_CONFIG } from '@/config/providers'
 import { getWebSearchProviders } from '@/config/websearchProviders'
+import type { Assistant } from '@/types/assistant'
 import { storage } from '@/utils'
 
 import { assistantService, getDefaultAssistant } from './AssistantService'
@@ -106,6 +107,60 @@ const APP_DATA_MIGRATIONS: AppDataMigration[] = [
       ])
 
       logger.info(`AI Gateway provider host updated to ${desiredHost}`)
+    }
+  },
+  {
+    version: 4,
+    app_version: '0.1.5',
+    description: 'Backfill missing system assistants without overwriting user-selected models',
+    migrate: async () => {
+      const systemAssistants = getSystemAssistants()
+      const assistantsToUpsert: Assistant[] = []
+
+      for (const seededAssistant of systemAssistants) {
+        let existingAssistant: Assistant | null = null
+
+        try {
+          existingAssistant = await assistantDatabase.getAssistantById(seededAssistant.id)
+        } catch {
+          existingAssistant = null
+        }
+
+        if (!existingAssistant) {
+          assistantsToUpsert.push(seededAssistant)
+          continue
+        }
+
+        const mergedAssistant = {
+          ...existingAssistant,
+          type: 'system' as const
+        }
+
+        let shouldUpsert = existingAssistant.type !== 'system'
+
+        if (!existingAssistant.defaultModel && seededAssistant.defaultModel) {
+          mergedAssistant.defaultModel = seededAssistant.defaultModel
+          shouldUpsert = true
+        }
+
+        if (!existingAssistant.model && mergedAssistant.defaultModel) {
+          // System assistants are user-configurable. We only backfill missing
+          // model/defaultModel values here and never reset an explicit selection.
+          mergedAssistant.model = mergedAssistant.defaultModel
+          shouldUpsert = true
+        }
+
+        if (shouldUpsert) {
+          assistantsToUpsert.push(mergedAssistant)
+        }
+      }
+
+      if (assistantsToUpsert.length > 0) {
+        await assistantDatabase.upsertAssistants(assistantsToUpsert)
+        logger.info(`Synced ${assistantsToUpsert.length} system assistant record(s)`)
+      } else {
+        logger.info('System assistants already in sync')
+      }
     }
   }
 ]

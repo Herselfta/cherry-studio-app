@@ -30,6 +30,7 @@ export type Setting = {
 export type ImportReduxData = {
   assistants: {
     defaultAssistant: Assistant
+    systemAssistants?: Assistant[]
     assistants: Assistant[]
   }
   llm: {

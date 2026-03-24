@@ -155,17 +155,23 @@ const SelectionSheet: React.FC<SelectionSheetProps> = ({
       onDidDismiss={() => setIsVisible(false)}
       onDidPresent={() => setIsVisible(true)}
       style={{ paddingBottom: bottom + 10 }}>
-      <View className="flex-1">
+      {/* The list must own the remaining sheet height, otherwise long restore/sync
+          selections can render past the viewport without becoming scrollable. */}
+      <View className="flex-1" style={{ minHeight: 0 }}>
         <LegendList
           data={items}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
           nestedScrollEnabled={Platform.OS === 'android'}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator
           estimatedItemSize={60}
           ListHeaderComponent={listHeaderComponent}
           ItemSeparatorComponent={() => <YStack className="h-2.5" />}
-          contentContainerStyle={{ paddingHorizontal: 16 }}
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingBottom: bottom + 16
+          }}
           ListEmptyComponent={emptyContent ? <YStack className="gap-2.5 px-4 pb-7">{emptyContent}</YStack> : undefined}
           recycleItems
         />

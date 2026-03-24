@@ -41,6 +41,62 @@ import {
   type WebDavConfig
 } from './WebDavConfigService'
 const logger = loggerService.withContext('Backup Service')
+const SYSTEM_ASSISTANT_IDS = ['default', 'quick', 'translate'] as const
+
+type SystemAssistantId = (typeof SYSTEM_ASSISTANT_IDS)[number]
+
+function isSystemAssistantId(assistantId: string): assistantId is SystemAssistantId {
+  return SYSTEM_ASSISTANT_IDS.includes(assistantId as SystemAssistantId)
+}
+
+async function loadSystemAssistantsForBackup(): Promise<Assistant[]> {
+  const seededSystemAssistants = getSystemAssistants()
+  const seededSystemAssistantMap = new Map(seededSystemAssistants.map(assistant => [assistant.id, assistant]))
+
+  const persistedSystemAssistants = await Promise.all(
+    SYSTEM_ASSISTANT_IDS.map(async assistantId => {
+      try {
+        return await assistantService.getAssistant(assistantId)
+      } catch (error) {
+        logger.warn(
+          `Failed to load persisted system assistant ${assistantId}, falling back to bundled defaults.`,
+          error
+        )
+        return null
+      }
+    })
+  )
+
+  return SYSTEM_ASSISTANT_IDS.map((assistantId, index) => {
+    return persistedSystemAssistants[index] || seededSystemAssistantMap.get(assistantId)!
+  })
+}
+
+function normalizeSystemAssistantsFromBackup(assistantsState: ImportReduxData['assistants']): Assistant[] {
+  const seededSystemAssistants = getSystemAssistants()
+  const seededSystemAssistantMap = new Map(seededSystemAssistants.map(assistant => [assistant.id, assistant]))
+  const systemAssistantsFromBackup =
+    assistantsState.systemAssistants && assistantsState.systemAssistants.length > 0
+      ? assistantsState.systemAssistants
+      : [assistantsState.defaultAssistant]
+
+  const persistedSystemAssistantMap = new Map(systemAssistantsFromBackup.map(assistant => [assistant.id, assistant]))
+
+  // Older backups only stored defaultAssistant. We synthesize the missing system
+  // assistants from current bundled defaults so restore does not silently discard
+  // quick/translate configuration on newer app builds.
+  return SYSTEM_ASSISTANT_IDS.map(assistantId => {
+    const seededAssistant = seededSystemAssistantMap.get(assistantId)!
+    const persistedAssistant = persistedSystemAssistantMap.get(assistantId)
+
+    return {
+      ...seededAssistant,
+      ...persistedAssistant,
+      id: assistantId,
+      type: 'system'
+    }
+  })
+}
 
 export function getThemeModeFromBackupSettings(settings: ExportReduxData['settings']) {
   if (!settings.theme) {
@@ -218,16 +274,19 @@ async function restoreReduxData(
   await providerDatabase.upsertProviders(data.llm.providers)
   providerService.invalidateCache()
   await providerService.refreshAllProvidersCache()
-  const allSourceAssistants = [data.assistants.defaultAssistant, ...data.assistants.assistants]
 
-  // default assistant为built_in, 其余为external
-  const assistants = allSourceAssistants.map(
-    (assistant, index) =>
-      ({
-        ...assistant,
-        type: index === 0 ? 'system' : 'external'
-      }) as Assistant
-  )
+  const systemAssistants = normalizeSystemAssistantsFromBackup(data.assistants)
+  const externalAssistants = data.assistants.assistants
+    .filter(assistant => !isSystemAssistantId(assistant.id))
+    .map(
+      assistant =>
+        ({
+          ...assistant,
+          type: 'external'
+        }) as Assistant
+    )
+
+  const assistants = [...systemAssistants, ...externalAssistants]
 
   logger.info(`Restoring ${assistants.length} assistants`)
   await assistantDatabase.upsertAssistants(assistants)
@@ -384,9 +443,13 @@ export function transformBackupData(data: string): {
   if (indexedDb.topics && indexedDb.message_blocks) {
     logger.info('Processing topics and messages...')
     // 从 Redux 构建 topic 的 assistantId 映射
+    const systemAssistantsFromRedux =
+      reduxData.assistants.systemAssistants && reduxData.assistants.systemAssistants.length > 0
+        ? reduxData.assistants.systemAssistants
+        : [reduxData.assistants.defaultAssistant]
     const topicsFromRedux = reduxData.assistants.assistants
       .flatMap(a => a.topics)
-      .concat(reduxData.assistants.defaultAssistant.topics)
+      .concat(systemAssistantsFromRedux.flatMap(assistant => assistant.topics))
 
     const topicToAssistantMap = new Map<string, string>()
     for (const topic of topicsFromRedux) {
@@ -445,15 +508,17 @@ export function transformBackupData(data: string): {
 
 async function getAllData(): Promise<string> {
   try {
-    const [providers, webSearchProviders, assistants, topics, messages, messageBlocks, mcpServers] = await Promise.all([
-      providerDatabase.getAllProviders(),
-      websearchProviderDatabase.getAllWebSearchProviders(),
-      assistantService.getExternalAssistants(),
-      topicService.getTopics(),
-      messageDatabase.getAllMessages(),
-      messageBlockDatabase.getAllBlocks(),
-      mcpDatabase.getMcps()
-    ])
+    const [providers, webSearchProviders, assistants, topics, messages, messageBlocks, mcpServers, systemAssistants] =
+      await Promise.all([
+        providerDatabase.getAllProviders(),
+        websearchProviderDatabase.getAllWebSearchProviders(),
+        assistantService.getExternalAssistants(),
+        topicService.getTopics(),
+        messageDatabase.getAllMessages(),
+        messageBlockDatabase.getAllBlocks(),
+        mcpDatabase.getMcps(),
+        loadSystemAssistantsForBackup()
+      ])
 
     // Get preferences for backup
     const userName = await preferenceService.get('user.name')
@@ -466,18 +531,8 @@ async function getAllData(): Promise<string> {
     const themeMode = await preferenceService.get('ui.theme_mode')
     const webDavConfig = getStoredWebDavConfig()
 
-    let defaultAssistant: Assistant | null = null
-
-    try {
-      defaultAssistant = await assistantService.getAssistant('default')
-    } catch (error) {
-      logger.warn('Failed to load default assistant from service, falling back to system config.', error)
-    }
-
-    if (!defaultAssistant) {
-      const systemAssistants = getSystemAssistants()
-      defaultAssistant = systemAssistants.find(assistant => assistant.id === 'default') || systemAssistants[0] || null
-    }
+    const defaultAssistant =
+      systemAssistants.find(assistant => assistant.id === 'default') || systemAssistants[0] || null
 
     const topicsByAssistantId = topics.reduce<Record<string, Topic[]>>((accumulator, topic) => {
       if (!accumulator[topic.assistantId]) {
@@ -501,6 +556,11 @@ async function getAllData(): Promise<string> {
           type: 'system'
         }
 
+    const systemAssistantsPayload = systemAssistants.map(assistant => ({
+      ...assistant,
+      topics: topicsByAssistantId[assistant.id] ?? assistant.topics ?? []
+    }))
+
     const assistantsWithTopics = assistants.map(assistant => ({
       ...assistant,
       topics: topicsByAssistantId[assistant.id] ?? assistant.topics ?? []
@@ -508,6 +568,7 @@ async function getAllData(): Promise<string> {
 
     const assistantsPayload = {
       defaultAssistant: defaultAssistantPayload,
+      systemAssistants: systemAssistantsPayload,
       assistants: assistantsWithTopics
     }
 

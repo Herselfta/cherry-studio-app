@@ -3,6 +3,7 @@ import { messageBlockDatabase, messageDatabase } from '@database'
 import ModernAiProvider from '@/aiCore/index_new'
 import type { AiSdkMiddlewareConfig } from '@/aiCore/middleware/AiSdkMiddlewareBuilder'
 import { buildStreamTextParams, convertMessagesToSdkMessages } from '@/aiCore/prepareParams'
+import { getSystemAssistantDefaultModel } from '@/config/assistants'
 import { loggerService } from '@/services/LoggerService'
 import type { Assistant, Model, Topic, Usage } from '@/types/assistant'
 import { ChunkType } from '@/types/chunk'
@@ -827,7 +828,7 @@ export async function fetchTranslateThunk(assistantMessageId: string, message: M
     throw new Error('Translate assistant not found')
   }
 
-  const translateAssistantModel = translateAssistant.defaultModel || getDefaultModel()
+  const translateAssistantModel = translateAssistant.defaultModel || getSystemAssistantDefaultModel('translate')
   const assistantForProvider = translateAssistant.model
     ? translateAssistant
     : { ...translateAssistant, model: translateAssistantModel }

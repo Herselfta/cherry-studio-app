@@ -97,6 +97,61 @@ describe('BackupService.transformBackupData', () => {
     })
     expect(parsed.reduxData.settings.theme).toBe('dark')
   })
+
+  it('keeps system assistant topic metadata when backup includes systemAssistants', () => {
+    const backupData = JSON.stringify({
+      localStorage: {
+        'persist:cherry-studio': JSON.stringify({
+          assistants: JSON.stringify({
+            defaultAssistant: { id: 'default', topics: [] },
+            systemAssistants: [
+              { id: 'default', topics: [] },
+              {
+                id: 'quick',
+                topics: [
+                  {
+                    id: 'topic-quick',
+                    assistantId: 'quick',
+                    name: 'Quick Topic',
+                    createdAt: 1,
+                    updatedAt: 2
+                  }
+                ]
+              },
+              { id: 'translate', topics: [] }
+            ],
+            assistants: []
+          }),
+          llm: JSON.stringify({ providers: [] }),
+          websearch: JSON.stringify({ providers: [] }),
+          settings: JSON.stringify({
+            userName: 'Mobile User',
+            theme: 'dark'
+          })
+        })
+      },
+      indexedDB: {
+        topics: [
+          {
+            id: 'topic-quick',
+            messages: []
+          }
+        ],
+        message_blocks: [],
+        settings: []
+      }
+    })
+
+    const parsed = transformBackupData(backupData)
+
+    expect(parsed.indexedData.topics).toEqual([
+      expect.objectContaining({
+        id: 'topic-quick',
+        assistantId: 'quick',
+        name: 'Quick Topic'
+      })
+    ])
+  })
 })
 
 describe('BackupService.getThemeModeFromBackupSettings', () => {

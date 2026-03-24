@@ -391,6 +391,9 @@ export default function WebDavScreen() {
   }))
 
   const actionsDisabled = !hasValidWebDavConfig(draftConfig)
+  const remoteBackupSheetDetents: ('auto' | number)[] = remoteBackups.length > 6 ? [0.85, 0.5] : ['auto', 0.5]
+  const remoteMobileSyncSheetDetents: ('auto' | number)[] =
+    remoteMobileSyncFiles.length > 6 ? [0.85, 0.5] : ['auto', 0.5]
 
   return (
     <SafeAreaContainer className="flex-1">
@@ -528,7 +531,9 @@ export default function WebDavScreen() {
 
       <SelectionSheet
         name={REMOTE_BACKUP_SHEET_NAME}
-        detents={['auto', 0.5]}
+        // Long remote lists should open at a fixed tall detent on phones; keeping
+        // `auto` here lets the sheet over-expand and hides the lower rows from reach.
+        detents={remoteBackupSheetDetents}
         items={remoteBackupItems}
         placeholder={t('settings.webdav.backup.remote_files')}
         emptyContent={<Text className="text-center opacity-60">{t('settings.webdav.backup.empty')}</Text>}
@@ -536,7 +541,7 @@ export default function WebDavScreen() {
 
       <SelectionSheet
         name={REMOTE_MOBILE_SYNC_SHEET_NAME}
-        detents={['auto', 0.5]}
+        detents={remoteMobileSyncSheetDetents}
         items={remoteMobileSyncItems}
         placeholder={t('settings.webdav.sync.remote_files')}
         emptyContent={<Text className="text-center opacity-60">{t('settings.webdav.sync.empty')}</Text>}

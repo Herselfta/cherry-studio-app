@@ -6,6 +6,7 @@ import LegacyAiProvider from '@/aiCore'
 import type { CompletionsParams } from '@/aiCore/legacy/middleware/schemas'
 import type { AiSdkMiddlewareConfig } from '@/aiCore/middleware/AiSdkMiddlewareBuilder'
 import { buildStreamTextParams } from '@/aiCore/prepareParams'
+import { getSystemAssistantDefaultModel } from '@/config/assistants'
 import { isDedicatedImageGenerationModel, isEmbeddingModel } from '@/config/models'
 import i18n from '@/i18n'
 import { loggerService } from '@/services/LoggerService'
@@ -179,13 +180,19 @@ export async function fetchTopicNaming(topicId: string, regenerate: boolean = fa
     return
   }
 
-  let callbacks: StreamProcessorCallbacks = {}
+  let titleFromChunk = ''
 
-  callbacks = {
+  const callbacks: StreamProcessorCallbacks = {
     onTextComplete: async finalText => {
-      await topicService.updateTopic(topicId, { name: finalText.trim() })
+      const normalizedTitle = finalText.trim()
+      if (!normalizedTitle) {
+        return
+      }
+      titleFromChunk = normalizedTitle
+      await topicService.updateTopic(topicId, { name: normalizedTitle })
     }
   }
+
   const streamProcessorCallbacks = createStreamProcessor(callbacks)
   const quickAssistant = await assistantService.getAssistant('quick')
 
@@ -193,7 +200,7 @@ export async function fetchTopicNaming(topicId: string, regenerate: boolean = fa
     return
   }
 
-  const quickAssistantModel = quickAssistant.defaultModel || getDefaultModel()
+  const quickAssistantModel = quickAssistant.defaultModel || getSystemAssistantDefaultModel('topicNaming')
   const assistantForProvider = quickAssistant.model ? quickAssistant : { ...quickAssistant, model: quickAssistantModel }
   const assistantForRequest = quickAssistant.defaultModel
     ? assistantForProvider
@@ -246,16 +253,27 @@ export async function fetchTopicNaming(topicId: string, regenerate: boolean = fa
   }
 
   try {
-    return (
-      (
-        await AI.completions(modelId, aiSdkParams, {
-          ...middlewareConfig,
-          assistant: assistantForRequest,
-          topicId,
-          callType: 'summary'
-        })
-      ).getText() || t('topics.new_topic')
+    const generatedTitle = (
+      await AI.completions(modelId, aiSdkParams, {
+        ...middlewareConfig,
+        assistant: assistantForRequest,
+        topicId,
+        callType: 'summary'
+      })
     )
+      .getText()
+      .trim()
+
+    // Summary requests can finish successfully even if the consumer never sees a
+    // TEXT_COMPLETE callback, so the final getText() result is the source of truth.
+    const finalTitle = generatedTitle || titleFromChunk
+
+    if (finalTitle) {
+      await topicService.updateTopic(topicId, { name: finalTitle })
+      return finalTitle
+    }
+
+    return topic.name
   } catch (error) {
     logger.error('Error during topic naming:', error)
     return ''
