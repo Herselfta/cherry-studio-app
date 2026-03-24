@@ -1,5 +1,6 @@
 import { messageDatabase } from '@database'
 import type { ModelMessage } from 'ai'
+import { NoOutputGeneratedError } from 'ai'
 import { t } from 'i18next'
 import { isEmpty, takeRight } from 'lodash'
 
@@ -29,6 +30,27 @@ import { getProviderByModel } from './ProviderService'
 import { topicService } from './TopicService'
 
 const logger = loggerService.withContext('fetchChatCompletion')
+
+function isTopicNamingStreamError(error: unknown) {
+  if (NoOutputGeneratedError.isInstance(error)) {
+    return true
+  }
+
+  const message = getErrorMessage(error).toLowerCase()
+  return (
+    message.includes('no output generated') || message.includes('check the stream') || message.includes('check stream')
+  )
+}
+
+function normalizeTopicNamingError(error: unknown) {
+  const message = getErrorMessage(error).trim()
+
+  if (!message || isTopicNamingStreamError(error)) {
+    return i18n.t('error.chat.response')
+  }
+
+  return message
+}
 
 export async function fetchChatCompletion({
   messages,
@@ -243,15 +265,51 @@ export async function fetchTopicNaming(topicId: string, regenerate: boolean = fa
     mcpTools: []
   }
 
-  try {
+  const extractGeneratedTitle = (rawText: string) => removeSpecialCharactersForTopicName(rawText).trim()
+
+  const generateTitleWithModernProvider = async () => {
     const result = await AI.completions(modelId, aiSdkParams, {
       ...middlewareConfig,
       assistant: assistantForRequest,
       topicId,
       callType: 'summary'
     })
-    const generatedTitle = removeSpecialCharactersForTopicName(result.getText())
 
+    return extractGeneratedTitle(result.getText())
+  }
+
+  const generateTitleWithLegacyProvider = async () => {
+    const legacyAI = new LegacyAiProvider(provider)
+    const legacyResult = await legacyAI.completions(
+      {
+        callType: 'summary',
+        messages: conversation,
+        assistant: assistantForRequest,
+        streamOutput: false,
+        shouldThrow: true
+      },
+      undefined
+    )
+
+    return extractGeneratedTitle(legacyResult.getText())
+  }
+
+  let generatedTitle = ''
+
+  try {
+    generatedTitle = await generateTitleWithModernProvider()
+  } catch (error) {
+    logger.warn('Modern topic naming failed, retrying with legacy provider.', error as Error)
+
+    try {
+      generatedTitle = await generateTitleWithLegacyProvider()
+    } catch (fallbackError) {
+      logger.error('Topic naming failed in both modern and legacy providers.', fallbackError as Error)
+      throw new Error(normalizeTopicNamingError(fallbackError))
+    }
+  }
+
+  try {
     if (!generatedTitle) {
       throw new Error(i18n.t('error.chat.response'))
     }
@@ -260,7 +318,7 @@ export async function fetchTopicNaming(topicId: string, regenerate: boolean = fa
     return generatedTitle
   } catch (error) {
     logger.error('Error during topic naming:', error)
-    throw new Error(getErrorMessage(error))
+    throw new Error(normalizeTopicNamingError(error))
   }
 }
 

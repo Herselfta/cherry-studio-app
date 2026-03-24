@@ -4,6 +4,18 @@ import packageJson from './package.json'
 
 // Read version from environment variable (set during build) or fallback to package.json
 const appVersion = packageJson.version
+const buildProfile = process.env.PROFILE || 'local'
+const isProductionBuild = buildProfile === 'production'
+const runtimeVersion = isProductionBuild ? { policy: 'appVersion' as const } : `${appVersion}-${buildProfile}`
+const updates = isProductionBuild
+  ? {
+      url: 'https://u.expo.dev/80096eaf-3ad0-4b87-a466-15f04da1bacc'
+    }
+  : {
+      enabled: false,
+      checkAutomatically: 'NEVER' as const,
+      fallbackToCacheTimeout: 0
+    }
 
 export default {
   expo: {
@@ -17,12 +29,11 @@ export default {
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     entryPoint: './src/app.js',
-    updates: {
-      url: 'https://u.expo.dev/80096eaf-3ad0-4b87-a466-15f04da1bacc'
-    },
-    runtimeVersion: {
-      policy: 'appVersion'
-    },
+    // Local and preview builds must not share the same runtime/update channel as
+    // production. Otherwise Android overwrite installs can keep launching an old
+    // cached OTA bundle, making fresh local fixes appear to have "no effect".
+    updates,
+    runtimeVersion,
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.cherry-ai.cherry-studio-app',
@@ -180,7 +191,8 @@ export default {
       eas: {
         projectId: '80096eaf-3ad0-4b87-a466-15f04da1bacc'
       },
-      appVersion
+      appVersion,
+      buildProfile
     }
   }
 }

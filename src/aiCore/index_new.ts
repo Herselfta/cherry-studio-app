@@ -305,18 +305,39 @@ export default class ModernAiProvider {
         getText: () => finalText
       }
     } else {
+      // Without onChunk, callers cannot observe stream-level failures. Capture the
+      // original stream error so non-chat callers (topic naming, summaries, etc.)
+      // do not degrade into the generic "No output generated. Check stream" wrapper.
+      let streamError: unknown = undefined
+
       const streamResult = await executor.streamText({
         ...params,
-        model
+        model,
+        onError({ error }) {
+          streamError = error
+        }
       })
 
       // 强制消费流,不然await streamResult.text会阻塞
-      await streamResult?.consumeStream()
+      await streamResult?.consumeStream({
+        onError(error) {
+          if (!streamError) {
+            streamError = error
+          }
+        }
+      })
 
-      const finalText = await streamResult.text
+      try {
+        const finalText = await streamResult.text
 
-      return {
-        getText: () => finalText
+        return {
+          getText: () => finalText
+        }
+      } catch (error) {
+        if (streamError) {
+          throw streamError
+        }
+        throw error
       }
     }
   }

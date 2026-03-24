@@ -168,7 +168,7 @@ export const TopicItem: FC<TopicItemProps> = ({
     } catch (error) {
       const errorMessage = (error as Error)?.message?.trim()
       toast.show(errorMessage ? `${t('common.error_occurred')}\n${errorMessage}` : t('common.error_occurred'), {
-        color: '$red100',
+        color: 'red',
         duration: 2500
       })
     } finally {

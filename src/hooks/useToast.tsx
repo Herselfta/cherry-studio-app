@@ -22,6 +22,28 @@ const ToastContext = createContext<ToastContextValue>(undefined)
 
 const DEFAULT_DURATION = 1500
 
+export function resolveToastTextClassName(color?: string) {
+  if (!color) {
+    return 'text-white'
+  }
+
+  if (color.startsWith('text-')) {
+    return color
+  }
+
+  switch (color) {
+    case 'red':
+    case '$red100':
+      return 'text-red-200'
+    case 'green':
+      return 'text-green-200'
+    case 'yellow':
+      return 'text-yellow-100'
+    default:
+      return 'text-white'
+  }
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const { isDark } = useTheme()
   const [toasts, setToasts] = useState<ToastOptions[]>([])
@@ -76,7 +98,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               {toast.icon && toast.icon}
 
               {typeof toast?.content === 'string' ? (
-                <Text className={cn('text-base', toast.color || 'primary-text')}>{toast.content}</Text>
+                <Text className={cn('text-center text-base', resolveToastTextClassName(toast.color))}>
+                  {toast.content}
+                </Text>
               ) : (
                 toast?.content
               )}

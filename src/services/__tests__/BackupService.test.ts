@@ -33,7 +33,11 @@ jest.mock('@/constants/storage', () => ({
 }))
 
 jest.mock('@/config/assistants', () => ({
-  getSystemAssistants: jest.fn(() => [])
+  getSystemAssistants: jest.fn(() => [
+    { id: 'default', name: 'Mobile Default', emoji: '😀', prompt: '', topics: [], type: 'system' },
+    { id: 'quick', name: 'Mobile Quick', emoji: '🏷️', prompt: '', topics: [], type: 'system' },
+    { id: 'translate', name: 'Mobile Translate', emoji: '🌐', prompt: '', topics: [], type: 'system' }
+  ])
 }))
 
 jest.mock('@/services/AppInitializationService', () => ({
@@ -57,7 +61,11 @@ jest.mock('@/services/TopicService', () => ({
   topicService: {}
 }))
 
-const { getThemeModeFromBackupSettings, transformBackupData } = require('@/services/BackupService')
+const {
+  getThemeModeFromBackupSettings,
+  normalizeAssistantsFromBackup,
+  transformBackupData
+} = require('@/services/BackupService')
 
 describe('BackupService.transformBackupData', () => {
   it('reads WebDAV config and theme from desktop backup settings', () => {
@@ -96,6 +104,54 @@ describe('BackupService.transformBackupData', () => {
       path: '/desktop-backups'
     })
     expect(parsed.reduxData.settings.theme).toBe('dark')
+  })
+
+  it('prefers desktop default assistant payload over seeded mobile default when restoring migration backups', () => {
+    const normalized = normalizeAssistantsFromBackup({
+      defaultAssistant: {
+        id: 'default',
+        name: 'Desktop Fallback',
+        emoji: '🙂',
+        prompt: '',
+        topics: [],
+        type: 'assistant'
+      },
+      assistants: [
+        {
+          id: 'default',
+          name: 'Desktop Custom Default',
+          emoji: '🤖',
+          prompt: '',
+          topics: [],
+          type: 'assistant'
+        },
+        {
+          id: 'external-1',
+          name: 'External Assistant',
+          emoji: '🧪',
+          prompt: '',
+          topics: [],
+          type: 'external'
+        }
+      ]
+    })
+
+    expect(normalized.source).toBe('desktop-migration')
+    expect(normalized.systemAssistants.find(assistant => assistant.id === 'default')).toEqual(
+      expect.objectContaining({
+        name: 'Desktop Custom Default',
+        emoji: '🤖',
+        type: 'system'
+      })
+    )
+    expect(normalized.externalAssistants).toEqual([
+      expect.objectContaining({
+        id: 'external-1',
+        name: 'External Assistant',
+        emoji: '🧪',
+        type: 'external'
+      })
+    ])
   })
 
   it('keeps system assistant topic metadata when backup includes systemAssistants', () => {

@@ -49,6 +49,34 @@ function isSystemAssistantId(assistantId: string): assistantId is SystemAssistan
   return SYSTEM_ASSISTANT_IDS.includes(assistantId as SystemAssistantId)
 }
 
+type NormalizedBackupAssistants = {
+  systemAssistants: Assistant[]
+  externalAssistants: Assistant[]
+  source: 'app-native' | 'desktop-migration'
+}
+
+function dedupeAssistantsById(assistants: Assistant[]): Assistant[] {
+  const assistantMap = new Map<string, Assistant>()
+
+  for (const assistant of assistants) {
+    assistantMap.set(assistant.id, assistant)
+  }
+
+  return [...assistantMap.values()]
+}
+
+function isDesktopMigrationAssistantsState(assistantsState: ImportReduxData['assistants']) {
+  if (assistantsState.systemAssistants && assistantsState.systemAssistants.length > 0) {
+    return false
+  }
+
+  if (assistantsState.defaultAssistant?.type && assistantsState.defaultAssistant.type !== 'system') {
+    return true
+  }
+
+  return assistantsState.assistants.some(assistant => isSystemAssistantId(assistant.id))
+}
+
 async function loadSystemAssistantsForBackup(): Promise<Assistant[]> {
   const seededSystemAssistants = getSystemAssistants()
   const seededSystemAssistantMap = new Map(seededSystemAssistants.map(assistant => [assistant.id, assistant]))
@@ -72,20 +100,38 @@ async function loadSystemAssistantsForBackup(): Promise<Assistant[]> {
   })
 }
 
-function normalizeSystemAssistantsFromBackup(assistantsState: ImportReduxData['assistants']): Assistant[] {
+export function normalizeAssistantsFromBackup(
+  assistantsState: ImportReduxData['assistants']
+): NormalizedBackupAssistants {
   const seededSystemAssistants = getSystemAssistants()
   const seededSystemAssistantMap = new Map(seededSystemAssistants.map(assistant => [assistant.id, assistant]))
-  const systemAssistantsFromBackup =
-    assistantsState.systemAssistants && assistantsState.systemAssistants.length > 0
-      ? assistantsState.systemAssistants
-      : [assistantsState.defaultAssistant]
+  const persistedSystemAssistantMap = new Map<string, Assistant>()
+  const source = isDesktopMigrationAssistantsState(assistantsState) ? 'desktop-migration' : 'app-native'
 
-  const persistedSystemAssistantMap = new Map(systemAssistantsFromBackup.map(assistant => [assistant.id, assistant]))
+  if (assistantsState.systemAssistants && assistantsState.systemAssistants.length > 0) {
+    assistantsState.systemAssistants
+      .filter(assistant => isSystemAssistantId(assistant.id))
+      .forEach(assistant => persistedSystemAssistantMap.set(assistant.id, assistant))
+  } else if (source === 'desktop-migration') {
+    // Desktop migration packs still use `assistants.defaultAssistant` for the
+    // desktop chat default assistant, not the mobile system "default" assistant.
+    // Prefer the concrete assistant entry from `assistants[]` when it exists so
+    // custom name / emoji / topics survive restore instead of being silently
+    // replaced by the app's seeded local default assistant.
+    const desktopDefaultAssistant =
+      assistantsState.assistants.find(assistant => assistant.id === 'default') ?? assistantsState.defaultAssistant
 
-  // Older backups only stored defaultAssistant. We synthesize the missing system
-  // assistants from current bundled defaults so restore does not silently discard
-  // quick/translate configuration on newer app builds.
-  return SYSTEM_ASSISTANT_IDS.map(assistantId => {
+    if (desktopDefaultAssistant?.id === 'default') {
+      persistedSystemAssistantMap.set('default', desktopDefaultAssistant)
+    }
+  } else if (assistantsState.defaultAssistant && isSystemAssistantId(assistantsState.defaultAssistant.id)) {
+    // Older mobile backups only persisted `defaultAssistant`. Keep supporting
+    // them, but do not reuse this branch for desktop migration payloads because
+    // desktop `defaultAssistant` has different semantics.
+    persistedSystemAssistantMap.set(assistantsState.defaultAssistant.id, assistantsState.defaultAssistant)
+  }
+
+  const systemAssistants = SYSTEM_ASSISTANT_IDS.map(assistantId => {
     const seededAssistant = seededSystemAssistantMap.get(assistantId)!
     const persistedAssistant = persistedSystemAssistantMap.get(assistantId)
 
@@ -93,9 +139,29 @@ function normalizeSystemAssistantsFromBackup(assistantsState: ImportReduxData['a
       ...seededAssistant,
       ...persistedAssistant,
       id: assistantId,
-      type: 'system'
-    }
+      type: 'system' as const
+    } satisfies Assistant
   })
+
+  const externalAssistants = dedupeAssistantsById(
+    isSystemAssistantId(assistantsState.defaultAssistant?.id ?? '')
+      ? assistantsState.assistants
+      : [assistantsState.defaultAssistant, ...assistantsState.assistants]
+  )
+    .filter(assistant => !isSystemAssistantId(assistant.id))
+    .map(
+      assistant =>
+        ({
+          ...assistant,
+          type: 'external'
+        }) as Assistant
+    )
+
+  return {
+    systemAssistants,
+    externalAssistants,
+    source
+  }
 }
 
 export function getThemeModeFromBackupSettings(settings: ExportReduxData['settings']) {
@@ -275,21 +341,13 @@ async function restoreReduxData(
   providerService.invalidateCache()
   await providerService.refreshAllProvidersCache()
 
-  const systemAssistants = normalizeSystemAssistantsFromBackup(data.assistants)
-  const externalAssistants = data.assistants.assistants
-    .filter(assistant => !isSystemAssistantId(assistant.id))
-    .map(
-      assistant =>
-        ({
-          ...assistant,
-          type: 'external'
-        }) as Assistant
-    )
-
+  const { systemAssistants, externalAssistants, source } = normalizeAssistantsFromBackup(data.assistants)
   const assistants = [...systemAssistants, ...externalAssistants]
 
+  logger.info(`Restoring ${assistants.length} assistants from ${source} backup payload`)
   logger.info(`Restoring ${assistants.length} assistants`)
   await assistantDatabase.upsertAssistants(assistants)
+  assistantService.syncAfterExternalMutation(assistants.map(assistant => assistant.id))
 
   await websearchProviderDatabase.upsertWebSearchProviders(data.websearch.providers)
 
@@ -442,19 +500,16 @@ export function transformBackupData(data: string): {
   // 如果用户选择了恢复消息
   if (indexedDb.topics && indexedDb.message_blocks) {
     logger.info('Processing topics and messages...')
-    // 从 Redux 构建 topic 的 assistantId 映射
-    const systemAssistantsFromRedux =
-      reduxData.assistants.systemAssistants && reduxData.assistants.systemAssistants.length > 0
-        ? reduxData.assistants.systemAssistants
-        : [reduxData.assistants.defaultAssistant]
-    const topicsFromRedux = reduxData.assistants.assistants
-      .flatMap(a => a.topics)
-      .concat(systemAssistantsFromRedux.flatMap(assistant => assistant.topics))
+    const { systemAssistants, externalAssistants } = normalizeAssistantsFromBackup(reduxData.assistants)
+    const topicsFromReduxMap = new Map<string, Topic>()
 
-    const topicToAssistantMap = new Map<string, string>()
-    for (const topic of topicsFromRedux) {
-      topicToAssistantMap.set(topic.id, topic.assistantId)
+    for (const assistant of [...systemAssistants, ...externalAssistants]) {
+      for (const topic of assistant.topics ?? []) {
+        topicsFromReduxMap.set(topic.id, topic)
+      }
     }
+
+    const topicsFromRedux = [...topicsFromReduxMap.values()]
 
     const allMessages: Message[] = []
     const messagesByTopicId: Record<string, Message[]> = {}
@@ -491,7 +546,7 @@ export function transformBackupData(data: string): {
       })
       .filter((topic): topic is Topic => topic !== undefined)
 
-    topicToAssistantMap.clear()
+    topicsFromReduxMap.clear()
     indexedDbData.messages = allMessages
     indexedDbData.topics = topicsWithMessages
     indexedDbData.message_blocks = indexedDb.message_blocks

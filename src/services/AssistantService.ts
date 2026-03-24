@@ -439,6 +439,31 @@ export class AssistantService {
     logger.info('AssistantService caches cleared')
   }
 
+  /**
+   * Notify hooks after assistants were mutated outside AssistantService.
+   *
+   * Restore/import flows write directly to the database for performance. Without
+   * an explicit cache reset + notification here, useAssistant('default') can keep
+   * rendering the pre-restore system assistant from memory even though the
+   * database already contains the restored name / emoji / model.
+   */
+  public syncAfterExternalMutation(assistantIds: string[] = []): void {
+    this.clearCache()
+
+    const changedAssistantIds = new Set(
+      assistantIds.length > 0 ? assistantIds : [...this.assistantSubscribers.keys(), ...this.allAssistantsCache.keys()]
+    )
+
+    changedAssistantIds.forEach(assistantId => {
+      this.notifyAssistantSubscribers(assistantId)
+    })
+
+    this.notifyGlobalSubscribers()
+    this.notifyAllAssistantsSubscribers()
+
+    logger.info(`AssistantService synced after external mutation for ${changedAssistantIds.size} assistants`)
+  }
+
   // ==================== Public API: Subscription ====================
 
   /**
