@@ -1,11 +1,12 @@
 import { messageDatabase } from '@database'
+import type { ModelMessage } from 'ai'
 import { t } from 'i18next'
 import { isEmpty, takeRight } from 'lodash'
 
 import LegacyAiProvider from '@/aiCore'
 import type { CompletionsParams } from '@/aiCore/legacy/middleware/schemas'
 import type { AiSdkMiddlewareConfig } from '@/aiCore/middleware/AiSdkMiddlewareBuilder'
-import { buildStreamTextParams } from '@/aiCore/prepareParams'
+import { buildGenerateTextParams, buildStreamTextParams } from '@/aiCore/prepareParams'
 import { getSystemAssistantDefaultModel } from '@/config/assistants'
 import { isDedicatedImageGenerationModel, isEmbeddingModel } from '@/config/models'
 import i18n from '@/i18n'
@@ -15,16 +16,16 @@ import { ChunkType } from '@/types/chunk'
 import type { MCPServer } from '@/types/mcp'
 import type { SdkModel } from '@/types/sdk'
 import type { MCPTool } from '@/types/tool'
+import { getErrorMessage } from '@/utils/error'
 import { isPromptToolUse, isSupportedToolUse } from '@/utils/mcpTool'
 import { findFileBlocks, getMainTextContent } from '@/utils/messageUtils/find'
+import { removeSpecialCharactersForTopicName } from '@/utils/naming'
 import { hasApiKey } from '@/utils/providerUtils'
 
 import AiProviderNew from '../aiCore/index_new'
 import { assistantService, getDefaultModel } from './AssistantService'
 import { mcpService } from './McpService'
-import { getAssistantProvider } from './ProviderService'
-import type { StreamProcessorCallbacks } from './StreamProcessingService'
-import { createStreamProcessor } from './StreamProcessingService'
+import { getProviderByModel } from './ProviderService'
 import { topicService } from './TopicService'
 
 const logger = loggerService.withContext('fetchChatCompletion')
@@ -180,32 +181,25 @@ export async function fetchTopicNaming(topicId: string, regenerate: boolean = fa
     return
   }
 
-  let titleFromChunk = ''
-
-  const callbacks: StreamProcessorCallbacks = {
-    onTextComplete: async finalText => {
-      const normalizedTitle = finalText.trim()
-      if (!normalizedTitle) {
-        return
-      }
-      titleFromChunk = normalizedTitle
-      await topicService.updateTopic(topicId, { name: normalizedTitle })
-    }
-  }
-
-  const streamProcessorCallbacks = createStreamProcessor(callbacks)
   const quickAssistant = await assistantService.getAssistant('quick')
 
   if (!quickAssistant) {
-    return
+    throw new Error(i18n.t('common.error_occurred'))
   }
 
-  const quickAssistantModel = quickAssistant.defaultModel || getSystemAssistantDefaultModel('topicNaming')
-  const assistantForProvider = quickAssistant.model ? quickAssistant : { ...quickAssistant, model: quickAssistantModel }
-  const assistantForRequest = quickAssistant.defaultModel
-    ? assistantForProvider
-    : { ...assistantForProvider, defaultModel: quickAssistantModel }
-  const provider = await getAssistantProvider(assistantForProvider)
+  const quickAssistantModel =
+    quickAssistant.model || quickAssistant.defaultModel || getSystemAssistantDefaultModel('quick')
+  const provider = getProviderByModel(quickAssistantModel)
+
+  if (!hasApiKey(provider)) {
+    throw new Error(i18n.t('error.no_api_key'))
+  }
+
+  const assistantForRequest: Assistant = {
+    ...quickAssistant,
+    model: quickAssistantModel,
+    defaultModel: quickAssistant.defaultModel || quickAssistantModel
+  }
 
   // 总结上下文总是取最后5条消息
   const contextMessages = takeRight(messages, 5)
@@ -227,21 +221,18 @@ export async function fetchTopicNaming(topicId: string, regenerate: boolean = fa
   )
 
   const conversation = JSON.stringify(structuredMessages)
+  const summaryMessages: ModelMessage[] = [{ role: 'user', content: conversation }]
 
+  // Topic naming should use the same provider-option pipeline as normal chat.
+  // Some providers work in chat but instantly return nothing here if summary
+  // requests bypass buildGenerateTextParams/buildProviderOptions.
+  const { params: aiSdkParams, modelId } = await buildGenerateTextParams(summaryMessages, assistantForRequest, provider)
   const AI = new AiProviderNew(quickAssistantModel, provider)
-
-  // 使用 system + prompt 格式，而非多条消息格式
-  const aiSdkParams = {
-    system: quickAssistant.prompt,
-    prompt: conversation
-  }
-  const modelId = quickAssistantModel.id
 
   const middlewareConfig: AiSdkMiddlewareConfig = {
     streamOutput: false,
-    onChunk: streamProcessorCallbacks,
     model: quickAssistantModel,
-    provider: provider,
+    provider,
     enableReasoning: false,
     isPromptToolUse: false,
     isSupportedToolUse: false,
@@ -253,30 +244,23 @@ export async function fetchTopicNaming(topicId: string, regenerate: boolean = fa
   }
 
   try {
-    const generatedTitle = (
-      await AI.completions(modelId, aiSdkParams, {
-        ...middlewareConfig,
-        assistant: assistantForRequest,
-        topicId,
-        callType: 'summary'
-      })
-    )
-      .getText()
-      .trim()
+    const result = await AI.completions(modelId, aiSdkParams, {
+      ...middlewareConfig,
+      assistant: assistantForRequest,
+      topicId,
+      callType: 'summary'
+    })
+    const generatedTitle = removeSpecialCharactersForTopicName(result.getText())
 
-    // Summary requests can finish successfully even if the consumer never sees a
-    // TEXT_COMPLETE callback, so the final getText() result is the source of truth.
-    const finalTitle = generatedTitle || titleFromChunk
-
-    if (finalTitle) {
-      await topicService.updateTopic(topicId, { name: finalTitle })
-      return finalTitle
+    if (!generatedTitle) {
+      throw new Error(i18n.t('error.chat.response'))
     }
 
-    return topic.name
+    await topicService.updateTopic(topicId, { name: generatedTitle })
+    return generatedTitle
   } catch (error) {
     logger.error('Error during topic naming:', error)
-    return ''
+    throw new Error(getErrorMessage(error))
   }
 }
 

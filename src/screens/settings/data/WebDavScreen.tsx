@@ -7,9 +7,9 @@ import { Button, Spinner } from 'heroui-native'
 import { delay } from 'lodash'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ScrollView } from 'react-native'
 
 import {
-  Container,
   dismissDialog,
   Group,
   GroupTitle,
@@ -400,136 +400,147 @@ export default function WebDavScreen() {
   return (
     <SafeAreaContainer className="flex-1">
       <HeaderBar title={t('settings.webdav.title')} />
-      <Container>
-        <YStack className="gap-2">
-          <GroupTitle>{t('settings.webdav.config.title')}</GroupTitle>
+      {/* This screen itself can exceed a phone viewport once config, backup and
+          sync groups are all visible. Keeping the content inside the generic
+          Container traps the lower sections off-screen on Android because the
+          page has no scrollable parent at all. */}
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
+        <YStack className="gap-5">
+          <YStack className="gap-2">
+            <GroupTitle>{t('settings.webdav.config.title')}</GroupTitle>
 
-          <TextField>
-            <TextField.Input
-              className="h-12"
-              placeholder={t('settings.webdav.config.host_placeholder')}
-              value={host}
-              onChangeText={setHost}
-            />
-          </TextField>
+            <TextField>
+              <TextField.Input
+                className="h-12"
+                placeholder={t('settings.webdav.config.host_placeholder')}
+                value={host}
+                onChangeText={setHost}
+              />
+            </TextField>
 
-          <TextField>
-            <TextField.Input
-              className="h-12"
-              placeholder={t('settings.webdav.config.user_placeholder')}
-              value={user}
-              onChangeText={setUser}
-            />
-          </TextField>
+            <TextField>
+              <TextField.Input
+                className="h-12"
+                placeholder={t('settings.webdav.config.user_placeholder')}
+                value={user}
+                onChangeText={setUser}
+              />
+            </TextField>
 
-          <TextField>
-            <TextField.Input
-              className="h-12 pr-0"
-              placeholder={t('settings.webdav.config.password_placeholder')}
-              value={password}
-              secureTextEntry={!showPassword}
-              onChangeText={setPassword}>
-              <TextField.InputEndContent>
-                <Button
-                  pressableFeedbackVariant="ripple"
-                  size="sm"
-                  variant="ghost"
-                  isIconOnly
-                  onPress={() => setShowPassword(prevState => !prevState)}>
-                  <Button.Label>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</Button.Label>
-                </Button>
-              </TextField.InputEndContent>
-            </TextField.Input>
-          </TextField>
+            <TextField>
+              <TextField.Input
+                className="h-12 pr-0"
+                placeholder={t('settings.webdav.config.password_placeholder')}
+                value={password}
+                secureTextEntry={!showPassword}
+                onChangeText={setPassword}>
+                <TextField.InputEndContent>
+                  <Button
+                    pressableFeedbackVariant="ripple"
+                    size="sm"
+                    variant="ghost"
+                    isIconOnly
+                    onPress={() => setShowPassword(prevState => !prevState)}>
+                    <Button.Label>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</Button.Label>
+                  </Button>
+                </TextField.InputEndContent>
+              </TextField.Input>
+            </TextField>
 
-          <TextField>
-            <TextField.Input
-              className="h-12"
-              placeholder={t('settings.webdav.config.path_placeholder')}
-              value={path}
-              onChangeText={setPath}
-            />
-          </TextField>
+            <TextField>
+              <TextField.Input
+                className="h-12"
+                placeholder={t('settings.webdav.config.path_placeholder')}
+                value={path}
+                onChangeText={setPath}
+              />
+            </TextField>
 
-          <Button onPress={persistDraftConfig} isDisabled={isSaving}>
-            <Button.Label>{isSaving ? <Spinner size="sm" /> : t('settings.webdav.config.apply')}</Button.Label>
-          </Button>
+            <Button onPress={persistDraftConfig} isDisabled={isSaving}>
+              <Button.Label>{isSaving ? <Spinner size="sm" /> : t('settings.webdav.config.apply')}</Button.Label>
+            </Button>
+          </YStack>
+
+          <YStack className="gap-2">
+            <GroupTitle>{t('settings.webdav.backup.title')}</GroupTitle>
+            <Group>
+              <PressableRow disabled={isChecking} onPress={handleCheckConnection}>
+                <XStack className="items-center gap-3">
+                  <ShieldCheck size={22} />
+                  <Text>{t('common.check')}</Text>
+                </XStack>
+                {isChecking ? <Spinner size="sm" /> : <Check size={18} className="opacity-40" />}
+              </PressableRow>
+
+              <PressableRow disabled={actionsDisabled || isBackingUp} onPress={handleBackup}>
+                <XStack className="items-center gap-3">
+                  <Cloud size={22} />
+                  <Text>{t('settings.webdav.backup.to_webdav')}</Text>
+                </XStack>
+                {isBackingUp ? <Spinner size="sm" /> : <RowRightArrow />}
+              </PressableRow>
+
+              <PressableRow disabled={actionsDisabled || isLoadingBackups} onPress={handleRestoreSelection}>
+                <XStack className="items-center gap-3">
+                  <Download size={22} />
+                  <Text>{t('settings.webdav.backup.from_webdav')}</Text>
+                </XStack>
+                {isLoadingBackups ? <Spinner size="sm" /> : <RowRightArrow />}
+              </PressableRow>
+
+              <PressableRow disabled={actionsDisabled || isLoadingBackups} onPress={handleRestoreSelection}>
+                <XStack className="items-center gap-3">
+                  <RefreshCw size={22} />
+                  <Text>{t('settings.webdav.backup.remote_files')}</Text>
+                </XStack>
+                <Text className="text-foreground-secondary text-xs opacity-60">{remoteBackups.length}</Text>
+              </PressableRow>
+            </Group>
+
+            <Text className="text-foreground-secondary px-1 text-xs opacity-60">
+              {t('settings.webdav.backup.description')}
+            </Text>
+          </YStack>
+
+          <YStack className="gap-2">
+            <GroupTitle>{t('settings.webdav.sync.title')}</GroupTitle>
+            <Group>
+              <PressableRow disabled={actionsDisabled || isSyncingMobile} onPress={handleMobileSyncBackup}>
+                <XStack className="items-center gap-3">
+                  <Cloud size={22} />
+                  <Text>{t('settings.webdav.sync.to_webdav')}</Text>
+                </XStack>
+                {isSyncingMobile ? <Spinner size="sm" /> : <RowRightArrow />}
+              </PressableRow>
+
+              <PressableRow disabled={actionsDisabled || isLoadingMobileSyncs} onPress={handleMobileSyncSelection}>
+                <XStack className="items-center gap-3">
+                  <Download size={22} />
+                  <Text>{t('settings.webdav.sync.from_webdav')}</Text>
+                </XStack>
+                {isLoadingMobileSyncs ? <Spinner size="sm" /> : <RowRightArrow />}
+              </PressableRow>
+
+              <PressableRow disabled={actionsDisabled || isLoadingMobileSyncs} onPress={handleMobileSyncSelection}>
+                <XStack className="items-center gap-3">
+                  <RefreshCw size={22} />
+                  <Text>{t('settings.webdav.sync.remote_files')}</Text>
+                </XStack>
+                <Text className="text-foreground-secondary text-xs opacity-60">{remoteMobileSyncFiles.length}</Text>
+              </PressableRow>
+            </Group>
+
+            <Text className="text-foreground-secondary px-1 text-xs opacity-60">
+              {t('settings.webdav.sync.description')}
+            </Text>
+          </YStack>
         </YStack>
-
-        <YStack className="gap-2">
-          <GroupTitle>{t('settings.webdav.backup.title')}</GroupTitle>
-          <Group>
-            <PressableRow disabled={isChecking} onPress={handleCheckConnection}>
-              <XStack className="items-center gap-3">
-                <ShieldCheck size={22} />
-                <Text>{t('common.check')}</Text>
-              </XStack>
-              {isChecking ? <Spinner size="sm" /> : <Check size={18} className="opacity-40" />}
-            </PressableRow>
-
-            <PressableRow disabled={actionsDisabled || isBackingUp} onPress={handleBackup}>
-              <XStack className="items-center gap-3">
-                <Cloud size={22} />
-                <Text>{t('settings.webdav.backup.to_webdav')}</Text>
-              </XStack>
-              {isBackingUp ? <Spinner size="sm" /> : <RowRightArrow />}
-            </PressableRow>
-
-            <PressableRow disabled={actionsDisabled || isLoadingBackups} onPress={handleRestoreSelection}>
-              <XStack className="items-center gap-3">
-                <Download size={22} />
-                <Text>{t('settings.webdav.backup.from_webdav')}</Text>
-              </XStack>
-              {isLoadingBackups ? <Spinner size="sm" /> : <RowRightArrow />}
-            </PressableRow>
-
-            <PressableRow disabled={actionsDisabled || isLoadingBackups} onPress={handleRestoreSelection}>
-              <XStack className="items-center gap-3">
-                <RefreshCw size={22} />
-                <Text>{t('settings.webdav.backup.remote_files')}</Text>
-              </XStack>
-              <Text className="text-foreground-secondary text-xs opacity-60">{remoteBackups.length}</Text>
-            </PressableRow>
-          </Group>
-
-          <Text className="text-foreground-secondary px-1 text-xs opacity-60">
-            {t('settings.webdav.backup.description')}
-          </Text>
-        </YStack>
-
-        <YStack className="gap-2">
-          <GroupTitle>{t('settings.webdav.sync.title')}</GroupTitle>
-          <Group>
-            <PressableRow disabled={actionsDisabled || isSyncingMobile} onPress={handleMobileSyncBackup}>
-              <XStack className="items-center gap-3">
-                <Cloud size={22} />
-                <Text>{t('settings.webdav.sync.to_webdav')}</Text>
-              </XStack>
-              {isSyncingMobile ? <Spinner size="sm" /> : <RowRightArrow />}
-            </PressableRow>
-
-            <PressableRow disabled={actionsDisabled || isLoadingMobileSyncs} onPress={handleMobileSyncSelection}>
-              <XStack className="items-center gap-3">
-                <Download size={22} />
-                <Text>{t('settings.webdav.sync.from_webdav')}</Text>
-              </XStack>
-              {isLoadingMobileSyncs ? <Spinner size="sm" /> : <RowRightArrow />}
-            </PressableRow>
-
-            <PressableRow disabled={actionsDisabled || isLoadingMobileSyncs} onPress={handleMobileSyncSelection}>
-              <XStack className="items-center gap-3">
-                <RefreshCw size={22} />
-                <Text>{t('settings.webdav.sync.remote_files')}</Text>
-              </XStack>
-              <Text className="text-foreground-secondary text-xs opacity-60">{remoteMobileSyncFiles.length}</Text>
-            </PressableRow>
-          </Group>
-
-          <Text className="text-foreground-secondary px-1 text-xs opacity-60">
-            {t('settings.webdav.sync.description')}
-          </Text>
-        </YStack>
-      </Container>
+      </ScrollView>
 
       <SelectionSheet
         name={REMOTE_BACKUP_SHEET_NAME}
