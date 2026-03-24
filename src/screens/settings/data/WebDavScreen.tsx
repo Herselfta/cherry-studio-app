@@ -391,9 +391,11 @@ export default function WebDavScreen() {
   }))
 
   const actionsDisabled = !hasValidWebDavConfig(draftConfig)
-  const remoteBackupSheetDetents: ('auto' | number)[] = remoteBackups.length > 6 ? [0.85, 0.5] : ['auto', 0.5]
-  const remoteMobileSyncSheetDetents: ('auto' | number)[] =
-    remoteMobileSyncFiles.length > 6 ? [0.85, 0.5] : ['auto', 0.5]
+  // WebDAV file pickers need deterministic sheet height on phones. Letting
+  // TrueSheet start in `auto` mode can still clip the lower rows before the
+  // nested list gains scroll control, so these remote file lists open tall by default.
+  const remoteBackupSheetDetents: ('auto' | number)[] = [0.88, 0.5]
+  const remoteMobileSyncSheetDetents: ('auto' | number)[] = [0.88, 0.5]
 
   return (
     <SafeAreaContainer className="flex-1">

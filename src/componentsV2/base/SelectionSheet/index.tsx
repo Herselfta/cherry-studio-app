@@ -1,8 +1,7 @@
-import { LegendList } from '@legendapp/list'
 import { TrueSheet } from '@lodev09/react-native-true-sheet'
 import { Button, cn } from 'heroui-native'
 import React, { useEffect, useState } from 'react'
-import { BackHandler, Platform, View } from 'react-native'
+import { BackHandler, Platform, ScrollView, View } from 'react-native'
 
 import { Check } from '@/componentsV2/icons'
 import XStack from '@/componentsV2/layout/XStack'
@@ -155,26 +154,31 @@ const SelectionSheet: React.FC<SelectionSheetProps> = ({
       onDidDismiss={() => setIsVisible(false)}
       onDidPresent={() => setIsVisible(true)}
       style={{ paddingBottom: bottom + 10 }}>
-      {/* The list must own the remaining sheet height, otherwise long restore/sync
-          selections can render past the viewport without becoming scrollable. */}
+      {/* Keep SelectionSheet on a plain ScrollView instead of LegendList here.
+          TrueSheet's gesture handoff is more reliable with a single native scroll
+          container, while virtualized lists can leave lower WebDAV rows stranded
+          below the viewport on phones even though more items exist. */}
       <View className="flex-1" style={{ minHeight: 0 }}>
-        <LegendList
-          data={items}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
+        <ScrollView
           nestedScrollEnabled={Platform.OS === 'android'}
           showsVerticalScrollIndicator
-          estimatedItemSize={60}
-          ListHeaderComponent={listHeaderComponent}
-          ItemSeparatorComponent={() => <YStack className="h-2.5" />}
           style={{ flex: 1 }}
           contentContainerStyle={{
             paddingHorizontal: 16,
             paddingBottom: bottom + 16
-          }}
-          ListEmptyComponent={emptyContent ? <YStack className="gap-2.5 px-4 pb-7">{emptyContent}</YStack> : undefined}
-          recycleItems
-        />
+          }}>
+          {listHeaderComponent()}
+          {items.length > 0 ? (
+            items.map((item, index) => (
+              <View key={keyExtractor(item, index)}>
+                {renderItem({ item })}
+                {index < items.length - 1 ? <YStack className="h-2.5" /> : null}
+              </View>
+            ))
+          ) : emptyContent ? (
+            <YStack className="gap-2.5 px-4 pb-7">{emptyContent}</YStack>
+          ) : null}
+        </ScrollView>
       </View>
     </TrueSheet>
   )

@@ -35,6 +35,10 @@ interface GroupedTopicListProps {
   getAssistantForNewTopic?: () => Promise<Assistant>
 }
 
+function updateTopicInList(topics: Topic[], topicId: string, updates: Partial<Topic>) {
+  return topics.map(topic => (topic.id === topicId ? { ...topic, ...updates } : topic))
+}
+
 // ListItem 类型定义现在使用导入的 TimeFormat
 type ListItem =
   | { type: 'header'; title: string; groupKey: DateGroupKey }
@@ -96,7 +100,7 @@ export function TopicList({
   }
 
   const listData = useMemo(() => {
-    const groupedTopics = groupItemsByDate(topics, topic => new Date(topic.updatedAt))
+    const groupedTopics = groupItemsByDate(localTopics, topic => new Date(topic.updatedAt))
 
     const groupOrder: DateGroupKey[] = ['today', 'yesterday', 'thisWeek', 'lastWeek', 'lastMonth', 'older']
     const groupTitles: Record<DateGroupKey, string> = {
@@ -129,7 +133,7 @@ export function TopicList({
     })
 
     return data
-  }, [topics, t, collapsedGroups])
+  }, [collapsedGroups, localTopics, t])
 
   const handleDelete = async (topicId: string) => {
     presentDialog('error', {
@@ -188,9 +192,7 @@ export function TopicList({
   const handleRename = async (topicId: string, newName: string) => {
     try {
       // Optimistically update local state
-      const updatedTopics = localTopics.map(topic =>
-        topic.id === topicId ? { ...topic, name: newName, updatedAt: Date.now() } : topic
-      )
+      const updatedTopics = updateTopicInList(localTopics, topicId, { name: newName, updatedAt: Date.now() })
       setLocalTopics(updatedTopics)
 
       // Rename topic (optimistic - handled by TopicService)
@@ -205,6 +207,17 @@ export function TopicList({
       throw error
     }
   }
+
+  const handleGeneratedName = useCallback((topicId: string, generatedName: string) => {
+    const normalizedName = generatedName.trim()
+    if (!normalizedName) {
+      return
+    }
+
+    setLocalTopics(prevTopics =>
+      updateTopicInList(prevTopics, topicId, { name: normalizedName, updatedAt: Date.now() })
+    )
+  }, [])
 
   const renderItem = ({ item, index }: { item: ListItem; index: number }) => {
     switch (item.type) {
@@ -228,6 +241,7 @@ export function TopicList({
             timeFormat={item.timeFormat}
             onDelete={handleDelete}
             onRename={handleRename}
+            onGenerateName={handleGeneratedName}
             currentTopicId={currentTopicId}
             switchTopic={switchTopic}
             handleNavigateChatScreen={handleNavigateChatScreen}

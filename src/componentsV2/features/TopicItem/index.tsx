@@ -50,6 +50,7 @@ interface TopicItemProps {
   timeFormat?: TimeFormat
   onDelete?: (topicId: string) => Promise<void>
   onRename?: (topicId: string, newName: string) => Promise<void>
+  onGenerateName?: (topicId: string, newName: string) => void | Promise<void>
   currentTopicId: string
   switchTopic: (topicId: string) => Promise<void>
   handleNavigateChatScreen?: (topicId: string) => void
@@ -64,6 +65,7 @@ export const TopicItem: FC<TopicItemProps> = ({
   timeFormat = 'time',
   onDelete,
   onRename,
+  onGenerateName,
   currentTopicId,
   switchTopic,
   handleNavigateChatScreen,
@@ -158,7 +160,11 @@ export const TopicItem: FC<TopicItemProps> = ({
   const handleGenerateName = async () => {
     try {
       setIsGeneratingName(true)
-      await fetchTopicNaming(topic.id, true)
+      const generatedName = ((await fetchTopicNaming(topic.id, true)) ?? '').trim()
+
+      if (generatedName && generatedName !== topic.name) {
+        await onGenerateName?.(topic.id, generatedName)
+      }
     } catch (error) {
       toast.show(t('common.error_occurred' + '\n' + (error as Error)?.message), { color: '$red100', duration: 2500 })
     } finally {
