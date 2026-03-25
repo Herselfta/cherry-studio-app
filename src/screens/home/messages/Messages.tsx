@@ -148,7 +148,7 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
         recycleItems
         maintainScrollAtEnd={autoScroll}
         maintainScrollAtEndThreshold={0.1}
-        keyboardShouldPersistTaps="never"
+        keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         ListEmptyComponent={<WelcomeContent />}
       />
