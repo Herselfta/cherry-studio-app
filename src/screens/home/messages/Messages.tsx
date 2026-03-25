@@ -144,6 +144,7 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
           showsVerticalScrollIndicator={false}
           data={groupedMessages}
           extraData={assistant}
+          removeClippedSubviews={false}
           renderItem={renderMessageGroup}
           keyExtractor={([key, group]) => `${key}-${group[0]?.id}`}
           ItemSeparatorComponent={() => <YStack className="h-5" />}
