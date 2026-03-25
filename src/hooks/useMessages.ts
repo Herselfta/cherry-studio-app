@@ -8,8 +8,6 @@ import { useEffect, useState } from 'react'
 import type { Message } from '@/types/message'
 
 export const useMessages = (topicId: string) => {
-  const startTime = performance.now()
-
   // Query 1: 获取所有 messages
   const messagesQuery = db
     .select()
@@ -58,7 +56,7 @@ export const useMessages = (topicId: string) => {
     })
 
     setProcessedMessages(messages)
-  }, [rawMessages, rawBlocks, topicId, startTime])
+  }, [rawMessages, rawBlocks, topicId])
 
   return { messages: processedMessages }
 }

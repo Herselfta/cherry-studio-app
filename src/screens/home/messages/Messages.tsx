@@ -4,7 +4,7 @@ import { BlurView } from 'expo-blur'
 import { SymbolView } from 'expo-symbols'
 import { MotiView } from 'moti'
 import type { FC } from 'react'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { Platform, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated'
@@ -40,7 +40,7 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
   const { messageBlocks } = useTopicBlocks(topic.id)
   const { isDark } = useTheme()
   const [autoScroll] = usePreference('chat.auto_scroll')
-  const groupedMessages = Object.entries(getGroupedMessages(messages))
+  const groupedMessages = useMemo(() => Object.entries(getGroupedMessages(messages)), [messages])
   const legendListRef = useRef<LegendListRef>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(false)
