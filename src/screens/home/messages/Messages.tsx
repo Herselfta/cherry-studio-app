@@ -41,6 +41,13 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
   const { isDark } = useTheme()
   const [autoScroll] = usePreference('chat.auto_scroll')
   const groupedMessages = useMemo(() => Object.entries(getGroupedMessages(messages)), [messages])
+  const maintainScrollAtEnd = useMemo(() => {
+    if (!autoScroll) return false
+    if (Platform.OS === 'android') {
+      return { onDataChange: true }
+    }
+    return true
+  }, [autoScroll])
   const legendListRef = useRef<LegendListRef>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(false)
@@ -146,7 +153,7 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
         onScroll={handleScroll}
         scrollEventThrottle={16}
         recycleItems
-        maintainScrollAtEnd={autoScroll}
+        maintainScrollAtEnd={maintainScrollAtEnd}
         maintainScrollAtEndThreshold={0.1}
         keyboardShouldPersistTaps="never"
         keyboardDismissMode="on-drag"
