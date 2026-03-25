@@ -46,6 +46,13 @@ import {
 } from './WebDavConfigService'
 const logger = loggerService.withContext('Backup Service')
 const SYSTEM_ASSISTANT_IDS = ['default', 'quick', 'translate'] as const
+const NON_PORTABLE_DESKTOP_SETTINGS_KEYS = [
+  'localBackupDir',
+  'localBackupAutoSync',
+  'localBackupSyncInterval',
+  'localBackupMaxBackups',
+  'localBackupSkipBackupFile'
+] as const
 
 type SystemAssistantId = (typeof SYSTEM_ASSISTANT_IDS)[number]
 
@@ -67,6 +74,19 @@ function dedupeAssistantsById(assistants: Assistant[]): Assistant[] {
   }
 
   return [...assistantMap.values()]
+}
+
+function sanitizePortableBackupSettings<T extends Record<string, unknown>>(settings: T): T {
+  const sanitizedSettings = { ...settings }
+
+  // Desktop migration payloads can still carry machine-local backup settings
+  // inside persisted Redux. They do not make sense on mobile restore targets
+  // and would incorrectly leak a desktop-only local backup feature across devices.
+  for (const key of NON_PORTABLE_DESKTOP_SETTINGS_KEYS) {
+    delete sanitizedSettings[key]
+  }
+
+  return sanitizedSettings
 }
 
 function isDesktopMigrationAssistantsState(assistantsState: ImportReduxData['assistants']) {
@@ -491,7 +511,7 @@ export function transformBackupData(data: string): {
   let persistDataString = localStorageData['persist:cherry-studio']
   let rawReduxData = JSON.parse(persistDataString)
   persistDataString = null
-  const settingsData = JSON.parse(rawReduxData.settings)
+  const settingsData = sanitizePortableBackupSettings(JSON.parse(rawReduxData.settings))
   const webDavConfig = getWebDavConfigFromBackup({
     localStorage: localStorageData,
     settings: settingsData

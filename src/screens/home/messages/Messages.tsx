@@ -6,7 +6,7 @@ import { MotiView } from 'moti'
 import type { FC } from 'react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
-import { Platform, StyleSheet, View } from 'react-native'
+import { FlatList, Platform, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSelector } from 'react-redux'
 
@@ -41,14 +41,8 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
   const { isDark } = useTheme()
   const [autoScroll] = usePreference('chat.auto_scroll')
   const groupedMessages = useMemo(() => Object.entries(getGroupedMessages(messages)), [messages])
-  const maintainScrollAtEnd = useMemo(() => {
-    if (!autoScroll) return false
-    if (Platform.OS === 'android') {
-      return { onDataChange: true }
-    }
-    return true
-  }, [autoScroll])
-  const legendListRef = useRef<LegendListRef>(null)
+  const maintainScrollAtEnd = useMemo(() => (autoScroll ? true : false), [autoScroll])
+  const legendListRef = useRef<LegendListRef | FlatList<[string, GroupedMessage[]]>>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(false)
 
@@ -74,10 +68,7 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
   const scrollToEnd = useCallback(
     ({ animated }: { animated: boolean }) => {
       if (legendListRef.current && groupedMessages.length > 0) {
-        legendListRef.current.scrollToOffset({
-          offset: 9999999,
-          animated
-        })
+        legendListRef.current.scrollToOffset({ offset: 9999999, animated })
       }
     },
     [groupedMessages.length]
@@ -137,28 +128,57 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
     setShowScrollButton(distanceFromBottom > threshold)
   }
 
+  const handleContentSizeChange = useCallback(() => {
+    if (Platform.OS === 'android' && autoScroll && isAtBottom && groupedMessages.length > 0) {
+      requestAnimationFrame(() => {
+        scrollToEnd({ animated: false })
+      })
+    }
+  }, [autoScroll, groupedMessages.length, isAtBottom, scrollToEnd])
+
   return (
     <View className="flex-1">
-      <LegendList
-        ref={legendListRef}
-        showsVerticalScrollIndicator={false}
-        data={groupedMessages}
-        extraData={assistant}
-        renderItem={renderMessageGroup}
-        keyExtractor={([key, group]) => `${key}-${group[0]?.id}`}
-        ItemSeparatorComponent={() => <YStack className="h-5" />}
-        contentContainerStyle={{
-          flexGrow: 1
-        }}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        recycleItems
-        maintainScrollAtEnd={maintainScrollAtEnd}
-        maintainScrollAtEndThreshold={0.1}
-        keyboardShouldPersistTaps="never"
-        keyboardDismissMode="on-drag"
-        ListEmptyComponent={<WelcomeContent />}
-      />
+      {Platform.OS === 'android' ? (
+        <FlatList
+          ref={legendListRef}
+          showsVerticalScrollIndicator={false}
+          data={groupedMessages}
+          extraData={assistant}
+          renderItem={renderMessageGroup}
+          keyExtractor={([key, group]) => `${key}-${group[0]?.id}`}
+          ItemSeparatorComponent={() => <YStack className="h-5" />}
+          contentContainerStyle={{
+            flexGrow: 1
+          }}
+          onScroll={handleScroll}
+          onContentSizeChange={handleContentSizeChange}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="never"
+          keyboardDismissMode="on-drag"
+          ListEmptyComponent={<WelcomeContent />}
+        />
+      ) : (
+        <LegendList
+          ref={legendListRef}
+          showsVerticalScrollIndicator={false}
+          data={groupedMessages}
+          extraData={assistant}
+          renderItem={renderMessageGroup}
+          keyExtractor={([key, group]) => `${key}-${group[0]?.id}`}
+          ItemSeparatorComponent={() => <YStack className="h-5" />}
+          contentContainerStyle={{
+            flexGrow: 1
+          }}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          recycleItems
+          maintainScrollAtEnd={maintainScrollAtEnd}
+          maintainScrollAtEndThreshold={0.1}
+          keyboardShouldPersistTaps="never"
+          keyboardDismissMode="on-drag"
+          ListEmptyComponent={<WelcomeContent />}
+        />
+      )}
       <GradientBlurEdge visible={!isAtBottom && groupedMessages.length > 0} />
       <AnimatedBlurView
         animatedProps={blurAnimatedProps}

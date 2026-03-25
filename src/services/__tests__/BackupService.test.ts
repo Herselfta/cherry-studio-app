@@ -106,6 +106,44 @@ describe('BackupService.transformBackupData', () => {
     expect(parsed.reduxData.settings.theme).toBe('dark')
   })
 
+  it('ignores desktop-only local backup settings from migration payloads', () => {
+    const backupData = JSON.stringify({
+      localStorage: {
+        'persist:cherry-studio': JSON.stringify({
+          assistants: JSON.stringify({
+            defaultAssistant: { id: 'default', topics: [] },
+            assistants: []
+          }),
+          llm: JSON.stringify({ providers: [] }),
+          websearch: JSON.stringify({ providers: [] }),
+          settings: JSON.stringify({
+            userName: 'Desktop User',
+            theme: 'dark',
+            localBackupDir: '/Users/mac/Backups',
+            localBackupAutoSync: true,
+            localBackupSyncInterval: 30,
+            localBackupMaxBackups: 5,
+            localBackupSkipBackupFile: false
+          })
+        })
+      },
+      indexedDB: {
+        topics: [],
+        message_blocks: [],
+        settings: []
+      }
+    })
+
+    const parsed = transformBackupData(backupData)
+
+    expect(parsed.reduxData.settings).toMatchObject({
+      userName: 'Desktop User',
+      theme: 'dark'
+    })
+    expect((parsed.reduxData.settings as Record<string, unknown>).localBackupDir).toBeUndefined()
+    expect((parsed.reduxData.settings as Record<string, unknown>).localBackupAutoSync).toBeUndefined()
+  })
+
   it('normalizes portable language from desktop migration localStorage', () => {
     const backupData = JSON.stringify({
       localStorage: {
