@@ -1,9 +1,8 @@
 import React from 'react'
-import type { StyleProp, TextStyle } from 'react-native'
-import { UITextView } from 'react-native-uitextview'
+import { Text, type StyleProp, type TextStyle } from 'react-native'
 import { withUniwind } from 'uniwind'
 
-export const StyledUITextView = withUniwind(UITextView)
+export const StyledUITextView = withUniwind(Text)
 
 interface MarkdownTextProps {
   content: string

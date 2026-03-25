@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react'
 import React from 'react'
-import { Platform, type TextProps } from 'react-native'
-import { UITextView } from 'react-native-uitextview'
+import { Platform, Text, type TextProps } from 'react-native'
 import { withUniwind } from 'uniwind'
 
-const StyledUITextView = withUniwind(UITextView)
+const StyledUITextView = withUniwind(Text)
 
 interface SelectableTextProps extends TextProps {
   children: ReactNode
