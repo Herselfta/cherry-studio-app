@@ -16,6 +16,7 @@ import {
   Text,
   XStack
 } from '@/componentsV2'
+import AssistantAvatar from '@/componentsV2/features/Assistant/AssistantAvatar'
 import { DefaultProviderIcon } from '@/componentsV2/icons'
 import { ArrowLeftRight, PenLine } from '@/componentsV2/icons/LucideIcon'
 import { useAssistant } from '@/hooks/useAssistant'
@@ -143,7 +144,19 @@ export default function AssistantDetailScreen() {
             <Container>
               <XStack className="items-center justify-center pb-5">
                 <AvatarEditButton
-                  content={assistant?.avatar || assistant?.emoji || <DefaultProviderIcon />}
+                  content={
+                    hasCustomAvatar ? (
+                      <AssistantAvatar
+                        assistant={assistant}
+                        size={120}
+                        borderWidth={0}
+                        borderColor="transparent"
+                        blurIntensity={0}
+                      />
+                    ) : (
+                      <DefaultProviderIcon />
+                    )
+                  }
                   editIcon={hasCustomAvatar ? <ArrowLeftRight size={24} /> : <PenLine size={24} />}
                   onEditPress={handleImageAvatarPick}
                   updateAvatar={updateAvatar}

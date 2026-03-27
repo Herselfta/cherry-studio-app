@@ -36,6 +36,7 @@ import { formatFileSize } from '@/utils/file'
 const logger = loggerService.withContext('BasicDataSettingsScreen')
 
 interface SettingItemConfig {
+  id: string
   title: string
   screen?: string
   icon: React.ReactElement
@@ -46,6 +47,7 @@ interface SettingItemConfig {
 }
 
 interface SettingGroupConfig {
+  id: string
   title: string
   items: SettingItemConfig[]
 }
@@ -283,29 +285,35 @@ export default function BasicDataSettingsScreen() {
 
   const settingsItems: SettingGroupConfig[] = [
     {
+      id: 'backup-and-restore',
       title: t('settings.data.title'),
       items: [
         {
+          id: 'native-backup',
           title: t('settings.data.backup'),
           icon: <Save size={24} />,
           onPress: handleBackup
         },
         {
+          id: 'native-restore',
           title: t('settings.data.restore.title'),
           icon: <Folder size={24} />,
           onPress: handleRestore
         },
         {
+          id: 'mobile-sync-import',
           title: t('common.import_from_cherry_studio'),
           icon: <FolderOpen size={24} />,
           onPress: handleImportMobileSync
         },
         {
-          title: t('settings.data.backup'),
+          id: 'mobile-sync-export',
+          title: t('settings.data.webdav.sync.title'),
           icon: <Save size={24} />,
           onPress: handleExportMobileSync
         },
         {
+          id: 'data-reset',
           title: isResetting ? t('common.loading') : t('settings.data.reset'),
           icon: <RotateCcw size={24} className="text-red-500" />,
           danger: true,
@@ -315,19 +323,23 @@ export default function BasicDataSettingsScreen() {
       ]
     },
     {
+      id: 'app-data',
       title: t('settings.data.data.title'),
       items: [
         {
+          id: 'open-app-data',
           title: t('settings.data.app_data'),
           icon: <FolderOpen size={24} />,
           onPress: handleOpenAppData
         },
         {
+          id: 'open-app-logs',
           title: t('settings.data.app_logs'),
           icon: <FileText size={24} />,
           onPress: handleOpenAppLogs
         },
         {
+          id: 'clear-cache',
           title: t('settings.data.clear_cache.button', { cacheSize }),
           icon: <Trash2 size={24} className="text-red-500" />,
           danger: true,
@@ -344,9 +356,9 @@ export default function BasicDataSettingsScreen() {
       <Container>
         <YStack className="flex-1 gap-6">
           {settingsItems.map(group => (
-            <GroupContainer key={group.title} title={group.title}>
+            <GroupContainer key={group.id} title={group.title}>
               {group.items.map(item => (
-                <SettingItem key={item.title} {...item} />
+                <SettingItem key={item.id} {...item} />
               ))}
             </GroupContainer>
           ))}

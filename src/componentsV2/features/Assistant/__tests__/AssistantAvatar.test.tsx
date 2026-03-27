@@ -30,6 +30,26 @@ describe('AssistantAvatar', () => {
     expect(screen.getByText('image:data:image/png;base64,abc')).toBeTruthy()
   })
 
+  it('normalizes raw base64 avatars into data urls', () => {
+    const rawBase64 = 'a'.repeat(256)
+
+    render(<AssistantAvatar assistant={{ avatar: rawBase64, emoji: '🤖' }} />)
+
+    expect(screen.getByText(`image:data:image/png;base64,${rawBase64}`)).toBeTruthy()
+  })
+
+  it('strips whitespace from data url avatars restored from migration payloads', () => {
+    render(<AssistantAvatar assistant={{ avatar: '  data:image/png;base64,a b c  ', emoji: '🤖' }} />)
+
+    expect(screen.getByText('image:data:image/png;base64,abc')).toBeTruthy()
+  })
+
+  it('falls back to emoji when avatar uses an unsupported legacy scheme', () => {
+    render(<AssistantAvatar assistant={{ avatar: 'image://legacy-avatar', emoji: '🤖' }} />)
+
+    expect(screen.getByText('emoji:🤖')).toBeTruthy()
+  })
+
   it('uses emoji rendering when avatar itself is an emoji', () => {
     render(<AssistantAvatar assistant={{ avatar: '🦊', emoji: '🤖' }} />)
 

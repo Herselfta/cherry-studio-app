@@ -2,6 +2,7 @@ import React from 'react'
 
 import Image from '@/componentsV2/base/Image'
 import type { Assistant } from '@/types/assistant'
+import { normalizeImageSourceUri } from '@/utils/imageSource'
 import { isEmoji } from '@/utils/naming'
 
 import EmojiAvatar from './EmojiAvatar'
@@ -24,11 +25,25 @@ const AssistantAvatar = ({
   blurIntensity = 80
 }: AssistantAvatarProps) => {
   const avatar = assistant?.avatar?.trim()
+  const normalizedAvatar = normalizeImageSourceUri(avatar)
 
   if (!avatar || isEmoji(avatar)) {
     return (
       <EmojiAvatar
-        emoji={avatar || assistant?.emoji}
+        emoji={avatar || assistant?.emoji || '⭐️'}
+        size={size}
+        borderWidth={borderWidth}
+        borderColor={borderColor}
+        borderRadius={borderRadius}
+        blurIntensity={blurIntensity}
+      />
+    )
+  }
+
+  if (!normalizedAvatar) {
+    return (
+      <EmojiAvatar
+        emoji={assistant?.emoji || '⭐️'}
         size={size}
         borderWidth={borderWidth}
         borderColor={borderColor}
@@ -40,7 +55,7 @@ const AssistantAvatar = ({
 
   return (
     <Image
-      source={{ uri: avatar }}
+      source={{ uri: normalizedAvatar }}
       resizeMode="cover"
       className="overflow-hidden"
       style={{
