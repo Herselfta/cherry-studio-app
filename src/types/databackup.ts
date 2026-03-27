@@ -11,6 +11,16 @@ export type BackupData = {
   app_initialization_version?: number
   indexedDB: ImportIndexedData
   redux: ImportReduxData
+  portableImageAssets?: PortableImageAsset[]
+}
+
+export type PortableImageAsset = {
+  fileId: string
+  data: string
+  mime?: string
+  ext?: string
+  name?: string
+  origin_name?: string
 }
 
 export type ImportIndexedData = {

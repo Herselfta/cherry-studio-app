@@ -1,5 +1,8 @@
 jest.mock('@database', () => ({
   assistantDatabase: {},
+  fileDatabase: {
+    upsertFiles: jest.fn()
+  },
   mcpDatabase: {},
   messageBlockDatabase: {},
   messageDatabase: {},
@@ -49,6 +52,10 @@ jest.mock('@/services/AssistantService', () => ({
   assistantService: {}
 }))
 
+jest.mock('@/services/FileService', () => ({
+  writeBase64File: jest.fn()
+}))
+
 jest.mock('@/services/PreferenceService', () => ({
   preferenceService: {}
 }))
@@ -63,9 +70,12 @@ jest.mock('@/services/TopicService', () => ({
 
 const {
   getThemeModeFromBackupSettings,
+  materializePortableImageBlocks,
   normalizeAssistantsFromBackup,
   transformBackupData
 } = require('@/services/BackupService')
+const { fileDatabase } = require('@database')
+const { writeBase64File } = require('@/services/FileService')
 
 describe('BackupService.transformBackupData', () => {
   it('reads WebDAV config and theme from desktop backup settings', () => {
@@ -171,6 +181,50 @@ describe('BackupService.transformBackupData', () => {
     const parsed = transformBackupData(backupData)
 
     expect(parsed.portableLanguage).toBe('zh-Hans-CN')
+  })
+
+  it('extracts portable image assets from desktop migration payloads', () => {
+    const backupData = JSON.stringify({
+      localStorage: {
+        'persist:cherry-studio': JSON.stringify({
+          assistants: JSON.stringify({
+            defaultAssistant: { id: 'default', topics: [] },
+            assistants: []
+          }),
+          llm: JSON.stringify({ providers: [] }),
+          websearch: JSON.stringify({ providers: [] }),
+          settings: JSON.stringify({
+            userName: 'Desktop User',
+            theme: 'dark'
+          })
+        })
+      },
+      indexedDB: {
+        topics: [],
+        message_blocks: [],
+        settings: []
+      },
+      portableImageAssets: [
+        {
+          fileId: 'image-1',
+          data: 'data:image/png;base64,abc123',
+          ext: '.png',
+          name: 'image-1',
+          origin_name: 'shared-image.png'
+        }
+      ]
+    })
+
+    const parsed = transformBackupData(backupData)
+
+    expect(parsed.portableImageAssets).toEqual([
+      expect.objectContaining({
+        fileId: 'image-1',
+        data: 'data:image/png;base64,abc123',
+        ext: '.png',
+        origin_name: 'shared-image.png'
+      })
+    ])
   })
 
   it('prefers desktop default assistant payload over seeded mobile default when restoring migration backups', () => {
@@ -349,6 +403,81 @@ describe('BackupService.transformBackupData', () => {
         id: 'topic-quick',
         assistantId: 'quick',
         name: 'Quick Topic'
+      })
+    ])
+  })
+})
+
+describe('BackupService.materializePortableImageBlocks', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('rewrites desktop image file references into local mobile files', async () => {
+    writeBase64File.mockResolvedValue({
+      id: 'image-1',
+      name: 'image-1',
+      origin_name: 'shared-image.png',
+      path: 'file:///data/user/0/app/files/Images/image-1.png',
+      size: 12,
+      ext: '.png',
+      type: 'image',
+      created_at: 1,
+      count: 1
+    })
+
+    const restoredBlocks = await materializePortableImageBlocks(
+      [
+        {
+          id: 'block-1',
+          messageId: 'message-1',
+          type: 'image',
+          createdAt: 1,
+          status: 'success',
+          file: {
+            id: 'image-1',
+            name: 'image-1',
+            origin_name: 'shared-image.png',
+            path: '/Users/mac/shared-image.png',
+            size: 12,
+            ext: '.png',
+            type: 'image',
+            created_at: 1,
+            count: 1
+          }
+        }
+      ],
+      [
+        {
+          fileId: 'image-1',
+          data: 'data:image/png;base64,abc123',
+          ext: '.png',
+          name: 'image-1',
+          origin_name: 'shared-image.png'
+        }
+      ]
+    )
+
+    expect(writeBase64File).toHaveBeenCalledWith(
+      'data:image/png;base64,abc123',
+      expect.objectContaining({
+        fileId: 'image-1',
+        extension: '.png',
+        originName: 'shared-image.png'
+      })
+    )
+    expect(fileDatabase.upsertFiles).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'image-1',
+        path: 'file:///data/user/0/app/files/Images/image-1.png'
+      })
+    ])
+    expect(restoredBlocks).toEqual([
+      expect.objectContaining({
+        file: expect.objectContaining({
+          id: 'image-1',
+          path: 'file:///data/user/0/app/files/Images/image-1.png'
+        })
       })
     ])
   })

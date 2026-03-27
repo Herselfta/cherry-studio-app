@@ -1,5 +1,6 @@
 import {
   assistantDatabase,
+  fileDatabase,
   mcpDatabase,
   messageBlockDatabase,
   messageDatabase,
@@ -26,14 +27,16 @@ import type {
   ExportReduxData,
   ImportIndexedData,
   ImportReduxData,
+  PortableImageAsset,
   Setting
 } from '@/types/databackup'
 import type { FileMetadata } from '@/types/file'
-import type { Message } from '@/types/message'
+import { type ImageMessageBlock, type Message,MessageBlockType } from '@/types/message'
 import { storage } from '@/utils'
 
 import { resetAppInitializationState, runAppDataMigrations } from './AppInitializationService'
 import { assistantService } from './AssistantService'
+import { writeBase64File } from './FileService'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
 import {
@@ -100,6 +103,74 @@ function sanitizePortableBackupSettings<T extends Record<string, unknown>>(setti
   }
 
   return sanitizedSettings
+}
+
+function isPortableImageAsset(value: unknown): value is PortableImageAsset {
+  return !!value && typeof value === 'object' && 'fileId' in value && 'data' in value
+}
+
+export async function materializePortableImageBlocks(
+  messageBlocks: ExportIndexedData['message_blocks'],
+  portableImageAssets: PortableImageAsset[]
+) {
+  if (portableImageAssets.length === 0) {
+    return messageBlocks
+  }
+
+  // Desktop migration payloads historically only carried image file references.
+  // When restoring on mobile those desktop paths are meaningless, so we
+  // materialize the embedded portable image bytes into app-local files first.
+  const portableImageAssetMap = new Map(portableImageAssets.map(asset => [asset.fileId, asset]))
+  const restoredFiles = new Map<string, FileMetadata>()
+  const restoredBlocks = await Promise.all(
+    messageBlocks.map(async block => {
+      if (block.type !== MessageBlockType.IMAGE || !block.file?.id) {
+        return block
+      }
+
+      const portableImageAsset = portableImageAssetMap.get(block.file.id)
+
+      if (!portableImageAsset) {
+        return block
+      }
+
+      try {
+        let restoredFile = restoredFiles.get(portableImageAsset.fileId)
+
+        if (!restoredFile) {
+          restoredFile = await writeBase64File(portableImageAsset.data, {
+            fileId: portableImageAsset.fileId,
+            extension: portableImageAsset.ext,
+            fileName: portableImageAsset.name || portableImageAsset.fileId,
+            originName: portableImageAsset.origin_name || portableImageAsset.name || portableImageAsset.fileId
+          })
+          restoredFiles.set(portableImageAsset.fileId, restoredFile)
+        }
+
+        return {
+          ...block,
+          file: restoredFile
+        } satisfies ImageMessageBlock
+      } catch (error) {
+        logger.warn(
+          `Failed to materialize portable image asset ${portableImageAsset.fileId} during migration restore. Falling back to inline image data.`,
+          error
+        )
+
+        return {
+          ...block,
+          url: block.url || portableImageAsset.data
+        } satisfies ImageMessageBlock
+      }
+    })
+  )
+
+  if (restoredFiles.size > 0) {
+    await fileDatabase.upsertFiles([...restoredFiles.values()])
+    logger.info(`Materialized ${restoredFiles.size} portable image asset(s) into local app storage`)
+  }
+
+  return restoredBlocks
 }
 
 function isDesktopMigrationAssistantsState(assistantsState: ImportReduxData['assistants']) {
@@ -232,7 +303,12 @@ export type ProgressUpdate = {
 
 type OnProgressCallback = (update: ProgressUpdate) => void
 
-async function restoreIndexedDbData(data: ExportIndexedData, onProgress: OnProgressCallback, _dispatch: Dispatch) {
+async function restoreIndexedDbData(
+  data: ExportIndexedData,
+  portableImageAssets: PortableImageAsset[],
+  onProgress: OnProgressCallback,
+  _dispatch: Dispatch
+) {
   onProgress({ step: 'restore_messages', status: 'in_progress' })
 
   // 根据数据量动态调整批次大小
@@ -336,9 +412,10 @@ async function restoreIndexedDbData(data: ExportIndexedData, onProgress: OnProgr
   const validMessageIds = new Set(data.messages.map(msg => msg.id))
   let filteredCount = 0
   let processedBlocks = 0
+  const portableImageBlocks = await materializePortableImageBlocks(data.message_blocks, portableImageAssets)
 
   for (let i = 0; i < blockCount; i += BATCH_SIZE) {
-    const batch = data.message_blocks.slice(i, Math.min(i + BATCH_SIZE, blockCount))
+    const batch = portableImageBlocks.slice(i, Math.min(i + BATCH_SIZE, blockCount))
     const validBlocks = batch.filter(block => {
       const isValid = validMessageIds.has(block.messageId)
       if (!isValid) filteredCount++
@@ -436,7 +513,7 @@ async function restoreParsedBackupData(data: string, onProgress: OnProgressCallb
   parsedData.reduxData = null
 
   logger.info('Restoring IndexedDB data...')
-  await restoreIndexedDbData(parsedData.indexedData, onProgress, dispatch)
+  await restoreIndexedDbData(parsedData.indexedData, parsedData.portableImageAssets, onProgress, dispatch)
 
   const backupVersion = parsedData.appInitializationVersion
 
@@ -506,6 +583,7 @@ export async function restore(
 export function transformBackupData(data: string): {
   reduxData: ExportReduxData
   indexedData: ExportIndexedData
+  portableImageAssets: PortableImageAsset[]
   appInitializationVersion?: number
   webDavConfig?: WebDavConfig | null
   portableLanguage?: LanguageVarious
@@ -526,6 +604,9 @@ export function transformBackupData(data: string): {
   // 提取 Redux 数据
   logger.info('Extracting Redux data...')
   let localStorageData = orginalData.localStorage
+  const portableImageAssets = Array.isArray(orginalData.portableImageAssets)
+    ? orginalData.portableImageAssets.filter(isPortableImageAsset)
+    : []
 
   // 从 IndexedDB 提取 topics（这是数据的真实来源，包含所有 topics）
   const indexedDb: ImportIndexedData = orginalData.indexedDB
@@ -621,6 +702,7 @@ export function transformBackupData(data: string): {
   return {
     reduxData: reduxData,
     indexedData: indexedDbData,
+    portableImageAssets,
     appInitializationVersion,
     webDavConfig,
     portableLanguage,

@@ -17,8 +17,38 @@ export interface ShareFileResult {
   savedUri?: string
 }
 
+export interface WriteBase64FileOptions {
+  fileId?: string
+  extension?: string
+  fileName?: string
+  originName?: string
+}
+
 const logger = loggerService.withContext('File Service')
 const { getAllFiles, getFileById } = fileDatabase
+
+function resolveImageExtension(data: string, extension?: string) {
+  if (extension) {
+    return normalizeExtension(extension.startsWith('.') ? extension : `.${extension}`)
+  }
+
+  const mimeMatch = data.match(/^data:image\/([a-z0-9.+-]+);base64,/i)
+  const mimeSubtype = mimeMatch?.[1]?.toLowerCase()
+
+  if (!mimeSubtype) {
+    return '.png'
+  }
+
+  if (mimeSubtype === 'jpeg') {
+    return '.jpg'
+  }
+
+  if (mimeSubtype === 'svg+xml') {
+    return '.svg'
+  }
+
+  return normalizeExtension(`.${mimeSubtype}`)
+}
 
 // 辅助函数，确保目录存在
 async function ensureDirExists(dir: Directory) {
@@ -37,15 +67,16 @@ export function readBase64File(file: FileMetadata): string {
   return new File(file.path).base64Sync()
 }
 
-export async function writeBase64File(data: string): Promise<FileMetadata> {
+export async function writeBase64File(data: string, options: WriteBase64FileOptions = {}): Promise<FileMetadata> {
   if (!DEFAULT_IMAGES_STORAGE.exists) {
     DEFAULT_IMAGES_STORAGE.create({ intermediates: true, overwrite: true })
   }
 
   const cleanedBase64 = data.includes('data:image') ? data.split(',')[1] : data
-
-  const fileName = uuid()
-  const fileUri = DEFAULT_IMAGES_STORAGE.uri + `${fileName}.png`
+  const ext = resolveImageExtension(data, options.extension)
+  const fileId = options.fileId || uuid()
+  const fileName = options.fileName || fileId
+  const fileUri = DEFAULT_IMAGES_STORAGE.uri + `${fileId}${ext}`
 
   // Use legacy API to write base64 data directly
   await FileSystem.writeAsStringAsync(fileUri, cleanedBase64, {
@@ -55,12 +86,12 @@ export async function writeBase64File(data: string): Promise<FileMetadata> {
   const file = new File(fileUri)
 
   return {
-    id: fileName,
+    id: fileId,
     name: fileName,
-    origin_name: fileName,
+    origin_name: options.originName || fileName,
     path: fileUri,
     size: file.size,
-    ext: '.png',
+    ext,
     type: FileTypes.IMAGE,
     created_at: Date.now(),
     count: 1
