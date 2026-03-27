@@ -391,8 +391,10 @@ async function restoreReduxData(
 
   const { systemAssistants, externalAssistants, source } = normalizeAssistantsFromBackup(data.assistants)
   const assistants = [...systemAssistants, ...externalAssistants]
+  const assistantsWithAvatarCount = assistants.filter(assistant => Boolean(assistant.avatar)).length
 
   logger.info(`Restoring ${assistants.length} assistants from ${source} backup payload`)
+  logger.info(`Restoring ${assistantsWithAvatarCount} assistant avatar(s) from ${source} backup payload`)
   logger.info(`Restoring ${assistants.length} assistants`)
   await assistantDatabase.upsertAssistants(assistants)
   assistantService.syncAfterExternalMutation(assistants.map(assistant => assistant.id))

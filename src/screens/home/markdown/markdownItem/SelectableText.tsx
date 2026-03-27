@@ -11,10 +11,7 @@ interface SelectableTextProps extends TextProps {
 
 export function SelectableText({ children, ...props }: SelectableTextProps) {
   return (
-    <StyledUITextView
-      selectable
-      selectionColor={Platform.OS === 'android' ? '#99e2c5' : undefined}
-      {...props}>
+    <StyledUITextView selectable selectionColor={Platform.OS === 'android' ? '#99e2c5' : undefined} {...props}>
       {children}
     </StyledUITextView>
   )

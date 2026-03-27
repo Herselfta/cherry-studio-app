@@ -1,5 +1,5 @@
 import React from 'react'
-import { Text, type StyleProp, type TextStyle } from 'react-native'
+import { type StyleProp, Text, type TextStyle } from 'react-native'
 import { withUniwind } from 'uniwind'
 
 export const StyledUITextView = withUniwind(Text)

@@ -11,6 +11,9 @@ export const assistants = sqliteTable('assistants', {
   // .references(() => knowledges.id),
   type: text('type').notNull().default('built_in'),
   emoji: text('emoji'),
+  // Assistant avatars are portable assistant metadata. Persisting them here
+  // prevents migration restores from silently dropping custom images/emojis.
+  avatar: text('avatar'),
   description: text('description'),
   model: text('model'),
   default_model: text('default_model'),

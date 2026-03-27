@@ -16,6 +16,7 @@ import m0012 from './0012_jittery_doctor_spectrum.sql';
 import m0013 from './0013_lush_madame_web.sql';
 import m0014 from './0014_gray_leopardon.sql';
 import m0015 from './0015_furry_old_lace.sql';
+import m0016 from './0016_opposite_switch.sql';
 import journal from './meta/_journal.json';
 
   export default {
@@ -36,7 +37,8 @@ m0011,
 m0012,
 m0013,
 m0014,
-m0015
+m0015,
+m0016
     }
   }
   
