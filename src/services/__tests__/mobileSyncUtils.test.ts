@@ -1,6 +1,12 @@
-import { buildMobileSyncAssistantPayload, normalizeMobileSyncExportTopics } from '@/services/mobileSyncUtils'
+import {
+  buildMobileSyncAssistantPayload,
+  collectPortableSyncImageAssets,
+  normalizeMobileSyncExportTopics
+} from '@/services/mobileSyncUtils'
 import type { Assistant, Topic } from '@/types/assistant'
+import { FileTypes } from '@/types/file'
 import { AssistantMessageStatus, type Message } from '@/types/message'
+import { MessageBlockStatus, MessageBlockType } from '@/types/message'
 
 function createTopic(overrides: Partial<Topic> & Pick<Topic, 'id' | 'assistantId'>): Topic {
   return {
@@ -38,6 +44,27 @@ function createMessage(overrides: Partial<Message> & Pick<Message, 'id' | 'assis
   }
 }
 
+function createImageBlock() {
+  return {
+    id: 'block-1',
+    messageId: 'message-1',
+    type: MessageBlockType.IMAGE,
+    createdAt: Date.now(),
+    status: MessageBlockStatus.SUCCESS,
+    file: {
+      id: 'image-file-1',
+      name: 'photo',
+      origin_name: 'photo.png',
+      path: '/tmp/photo.png',
+      ext: '.png',
+      type: FileTypes.IMAGE,
+      size: 1,
+      created_at: Date.now(),
+      count: 1
+    }
+  } as const
+}
+
 describe('buildMobileSyncAssistantPayload', () => {
   it('rebuilds assistant topics from normalized visible topics without exporting helper assistants', () => {
     const normalizedTopics = normalizeMobileSyncExportTopics({
@@ -71,5 +98,16 @@ describe('buildMobileSyncAssistantPayload', () => {
     expect(normalizedTopics.map(topic => topic.id)).toEqual(expect.arrayContaining(['default-topic', 'external-topic']))
     expect(normalizedTopics.map(topic => topic.id)).not.toContain('helper-topic')
     expect(result.assistants.find(assistant => assistant.id === 'quick')).toBeUndefined()
+  })
+
+  it('inlines uploaded image bytes for cross-device mobile sync', () => {
+    const portableImageAssets = collectPortableSyncImageAssets([createImageBlock()], () => 'mobile-image-base64')
+
+    expect(portableImageAssets).toEqual([
+      expect.objectContaining({
+        fileId: 'image-file-1',
+        data: 'data:image/png;base64,mobile-image-base64'
+      })
+    ])
   })
 })

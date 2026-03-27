@@ -18,8 +18,14 @@ import type { Message, MessageBlock } from '@/types/message'
 import type { WebSearchProvider } from '@/types/websearch'
 
 import { assistantService } from './AssistantService'
-import { getThemeModeFromBackupSettings, type ProgressUpdate } from './BackupService'
-import { buildMobileSyncAssistantPayload, normalizeMobileSyncExportTopics } from './mobileSyncUtils'
+import { getThemeModeFromBackupSettings, materializePortableImageBlocks, type ProgressUpdate } from './BackupService'
+import { readBase64File } from './FileService'
+import {
+  buildMobileSyncAssistantPayload,
+  collectPortableSyncImageAssets,
+  normalizeMobileSyncExportTopics,
+  type PortableSyncImageAsset
+} from './mobileSyncUtils'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
 
@@ -55,6 +61,7 @@ type SyncData = {
   topics: SyncTopic[]
   messages: SyncMessage[]
   messageBlocks: SyncMessageBlock[]
+  portableImageAssets?: PortableSyncImageAsset[]
   localStorage: Record<string, string>
 }
 
@@ -218,6 +225,7 @@ export async function exportMobileSyncPayload(): Promise<string> {
   const normalizedMessages = messages.filter(message => normalizedTopicIds.has(message.topicId))
   const normalizedMessageIds = new Set(normalizedMessages.map(message => message.id))
   const normalizedMessageBlocks = messageBlocks.filter(block => normalizedMessageIds.has(block.messageId))
+  const portableImageAssets = collectPortableSyncImageAssets(normalizedMessageBlocks, readBase64File)
 
   const { defaultAssistant: syncDefaultAssistant, assistants: syncAssistants } = buildMobileSyncAssistantPayload({
     assistants: mobileSyncAssistants,
@@ -254,6 +262,7 @@ export async function exportMobileSyncPayload(): Promise<string> {
       topics: normalizedTopics.map(toSyncTopic),
       messages: normalizedMessages.map(toSyncMessage),
       messageBlocks: normalizedMessageBlocks.map(toSyncMessageBlock),
+      portableImageAssets,
       localStorage: {}
     }
   }
@@ -318,9 +327,14 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
   onProgress({ step: 'restore_settings', status: 'completed' })
   onProgress({ step: 'restore_messages', status: 'in_progress' })
 
+  const restoredMessageBlocks = await materializePortableImageBlocks(
+    parsed.data.messageBlocks.map(toMobileMessageBlock),
+    parsed.data.portableImageAssets || []
+  )
+
   await topicDatabase.upsertTopics(parsed.data.topics.map(toMobileTopic))
   await messageDatabase.upsertMessages(parsed.data.messages.map(toMobileMessage))
-  await messageBlockDatabase.upsertBlocks(parsed.data.messageBlocks.map(toMobileMessageBlock))
+  await messageBlockDatabase.upsertBlocks(restoredMessageBlocks)
 
   topicService.invalidateCache()
   assistantService.invalidateCache()

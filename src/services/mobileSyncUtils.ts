@@ -1,5 +1,6 @@
 import type { Assistant, Topic } from '@/types/assistant'
-import type { Message } from '@/types/message'
+import { FileTypes, type FileMetadata } from '@/types/file'
+import { MessageBlockType, type Message, type MessageBlock } from '@/types/message'
 
 type BuildMobileSyncAssistantPayloadParams = {
   assistants: Assistant[]
@@ -16,6 +17,14 @@ type NormalizeMobileSyncExportTopicsParams = {
   assistants: Assistant[]
   messages: Message[]
   topics: Topic[]
+}
+
+export type PortableSyncImageAsset = {
+  fileId: string
+  data: string
+  ext?: string
+  name?: string
+  origin_name?: string
 }
 
 function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
@@ -85,6 +94,52 @@ function createFallbackAssistant(assistantId: string, topics: Topic[], fallbackA
     topics,
     type: 'external'
   }
+}
+
+function getPortableImageMimeSubtype(file: Pick<FileMetadata, 'ext'>) {
+  const normalizedExt = file.ext.replace(/^\./, '').toLowerCase()
+
+  if (normalizedExt === 'jpg') {
+    return 'jpeg'
+  }
+
+  if (normalizedExt === 'svg') {
+    return 'svg+xml'
+  }
+
+  return normalizedExt || 'png'
+}
+
+export function collectPortableSyncImageAssets(
+  messageBlocks: MessageBlock[],
+  readImageBase64: (file: FileMetadata) => string
+): PortableSyncImageAsset[] {
+  const seenFileIds = new Set<string>()
+  const portableImageAssets: PortableSyncImageAsset[] = []
+
+  for (const block of messageBlocks) {
+    if (block.type !== MessageBlockType.IMAGE || !block.file || block.file.type !== FileTypes.IMAGE) {
+      continue
+    }
+
+    if (seenFileIds.has(block.file.id)) {
+      continue
+    }
+
+    seenFileIds.add(block.file.id)
+    const base64 = readImageBase64(block.file)
+    const mimeSubtype = getPortableImageMimeSubtype(block.file)
+
+    portableImageAssets.push({
+      fileId: block.file.id,
+      data: `data:image/${mimeSubtype};base64,${base64}`,
+      ext: block.file.ext,
+      name: block.file.name,
+      origin_name: block.file.origin_name
+    })
+  }
+
+  return portableImageAssets
 }
 
 export function normalizeMobileSyncExportTopics({
