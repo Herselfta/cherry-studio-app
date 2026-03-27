@@ -255,6 +255,49 @@ describe('BackupService.transformBackupData', () => {
     )
   })
 
+  it('materializes desktop agent presets as external assistants and preserves avatar metadata', () => {
+    const normalized = normalizeAssistantsFromBackup({
+      defaultAssistant: {
+        id: 'default',
+        name: 'Desktop Default',
+        emoji: '🙂',
+        prompt: '',
+        topics: [],
+        type: 'assistant'
+      },
+      assistants: [
+        {
+          id: 'agent-preset',
+          name: 'Desktop Agent',
+          prompt: 'preset prompt',
+          topics: [],
+          type: 'external'
+        }
+      ],
+      presets: [
+        {
+          id: 'agent-preset',
+          name: 'Desktop Agent',
+          avatar: 'data:image/png;base64,agent-avatar',
+          prompt: 'preset prompt',
+          topics: [],
+          type: 'agent'
+        }
+      ]
+    })
+
+    expect(normalized.externalAssistants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'agent-preset',
+          name: 'Desktop Agent',
+          avatar: 'data:image/png;base64,agent-avatar',
+          type: 'external'
+        })
+      ])
+    )
+  })
+
   it('keeps system assistant topic metadata when backup includes systemAssistants', () => {
     const backupData = JSON.stringify({
       localStorage: {

@@ -32,6 +32,7 @@ export type ImportReduxData = {
     defaultAssistant: Assistant
     systemAssistants?: Assistant[]
     assistants: Assistant[]
+    presets?: Assistant[]
   }
   llm: {
     providers: Provider[]

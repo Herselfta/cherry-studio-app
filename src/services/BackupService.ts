@@ -66,11 +66,24 @@ type NormalizedBackupAssistants = {
   source: 'app-native' | 'desktop-migration'
 }
 
-function dedupeAssistantsById(assistants: Assistant[]): Assistant[] {
+function mergeAssistantsById(assistants: Assistant[]): Assistant[] {
   const assistantMap = new Map<string, Assistant>()
 
   for (const assistant of assistants) {
-    assistantMap.set(assistant.id, assistant)
+    const previousAssistant = assistantMap.get(assistant.id)
+
+    if (!previousAssistant) {
+      assistantMap.set(assistant.id, assistant)
+      continue
+    }
+
+    assistantMap.set(assistant.id, {
+      ...previousAssistant,
+      ...assistant,
+      avatar: assistant.avatar ?? previousAssistant.avatar,
+      emoji: assistant.emoji ?? previousAssistant.emoji,
+      topics: (assistant.topics?.length ? assistant.topics : previousAssistant.topics) ?? []
+    })
   }
 
   return [...assistantMap.values()]
@@ -155,6 +168,15 @@ export function normalizeAssistantsFromBackup(
     persistedSystemAssistantMap.set(assistantsState.defaultAssistant.id, assistantsState.defaultAssistant)
   }
 
+  const desktopPresetAssistants =
+    source === 'desktop-migration'
+      ? // Desktop migration payloads can carry agent presets inside
+        // `assistants.presets`. App has no dedicated preset library, so the
+        // portable fallback is to materialize them as external assistants and
+        // preserve custom avatars/prompts instead of silently dropping them.
+        (assistantsState.presets ?? []).filter(assistant => !isSystemAssistantId(assistant.id))
+      : []
+
   const systemAssistants = SYSTEM_ASSISTANT_IDS.map(assistantId => {
     const seededAssistant = seededSystemAssistantMap.get(assistantId)!
     const persistedAssistant = persistedSystemAssistantMap.get(assistantId)
@@ -167,16 +189,18 @@ export function normalizeAssistantsFromBackup(
     } satisfies Assistant
   })
 
-  const externalAssistants = dedupeAssistantsById(
-    isSystemAssistantId(assistantsState.defaultAssistant?.id ?? '')
+  const externalAssistants = mergeAssistantsById([
+    ...(isSystemAssistantId(assistantsState.defaultAssistant?.id ?? '')
       ? assistantsState.assistants
-      : [assistantsState.defaultAssistant, ...assistantsState.assistants]
-  )
+      : [assistantsState.defaultAssistant, ...assistantsState.assistants]),
+    ...desktopPresetAssistants
+  ])
     .filter(assistant => !isSystemAssistantId(assistant.id))
     .map(
       assistant =>
         ({
           ...assistant,
+          topics: assistant.topics ?? [],
           type: 'external'
         }) as Assistant
     )
