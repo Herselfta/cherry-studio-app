@@ -114,7 +114,7 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
         setMobileSyncFileName(normalizeMobileSyncWebDavFileName())
         dismissDialog()
         presentDialog('success', {
-          title: t('common.success'),
+          title: t('settings.webdav.sync.to_webdav'),
           content: t('settings.webdav.sync.upload_success', {
             fileName: uploaded.fileName
           })

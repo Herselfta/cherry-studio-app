@@ -93,7 +93,7 @@ export default function WebDavScreen() {
     try {
       const normalized = saveWebDavConfig(draftConfig)
       presentDialog('success', {
-        title: t('common.success'),
+        title: t('settings.webdav.config.title'),
         content: t('settings.webdav.backup.saved')
       })
       return normalized
@@ -229,7 +229,7 @@ export default function WebDavScreen() {
     try {
       const uploaded = await backupToWebDav(config)
       presentDialog('success', {
-        title: t('common.success'),
+        title: t('settings.webdav.backup.to_webdav'),
         content: t('settings.webdav.backup.backup_success', {
           fileName: uploaded.fileName
         })
@@ -254,7 +254,7 @@ export default function WebDavScreen() {
     try {
       const uploaded = await backupMobileSyncToWebDav(config)
       presentDialog('success', {
-        title: t('common.success'),
+        title: t('settings.webdav.sync.to_webdav'),
         content: t('settings.webdav.sync.upload_success', {
           fileName: uploaded.fileName
         })
