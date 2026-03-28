@@ -116,15 +116,42 @@ function selectPortableAssistantMessages(messages: Message[]) {
 }
 
 function resolveVisibleAssistantId(
-  topic: Pick<Topic, 'assistantId'> | undefined,
+  topic: Pick<Topic, 'assistantId' | 'createdAt' | 'updatedAt'> | undefined,
   messages: Message[],
   visibleAssistantIds: Set<string>
 ) {
-  if (topic?.assistantId && visibleAssistantIds.has(topic.assistantId)) {
-    return topic.assistantId
+  const visibleMessages = messages.filter(message => visibleAssistantIds.has(message.assistantId))
+  const visibleTopicAssistantId =
+    topic?.assistantId && visibleAssistantIds.has(topic.assistantId) ? topic.assistantId : undefined
+  const latestVisibleMessage = [...visibleMessages].sort(
+    (left, right) => getEntityTimestamp(right) - getEntityTimestamp(left)
+  )[0]
+  const visibleMessageAssistantIds = Array.from(new Set(visibleMessages.map(message => message.assistantId)))
+
+  if (!visibleTopicAssistantId) {
+    return latestVisibleMessage?.assistantId
   }
 
-  return messages.map(message => message.assistantId).find(assistantId => visibleAssistantIds.has(assistantId))
+  if (visibleMessageAssistantIds.length === 0) {
+    return visibleTopicAssistantId
+  }
+
+  if (visibleMessageAssistantIds.includes(visibleTopicAssistantId)) {
+    return visibleTopicAssistantId
+  }
+
+  const topicTimestamp = topic ? getEntityTimestamp(topic) : 0
+  const latestMessageTimestamp = latestVisibleMessage ? getEntityTimestamp(latestVisibleMessage) : 0
+
+  if (topicTimestamp > latestMessageTimestamp) {
+    return visibleTopicAssistantId
+  }
+
+  if (visibleMessageAssistantIds.length === 1) {
+    return visibleMessageAssistantIds[0]
+  }
+
+  return latestVisibleMessage?.assistantId || visibleTopicAssistantId
 }
 
 function synthesizeTopic(topicId: string, assistantId: string, messages: Message[]): Topic {
@@ -268,7 +295,7 @@ export function normalizeMobileSyncImportTopics({
   const messagesByTopicId = groupMessagesByTopicId(messages)
 
   for (const [topicId, topic] of normalizedTopics.entries()) {
-    if (!visibleAssistantIds || visibleAssistantIds.has(topic.assistantId)) {
+    if (!visibleAssistantIds) {
       continue
     }
 
@@ -277,7 +304,7 @@ export function normalizeMobileSyncImportTopics({
       messagesByTopicId.get(topicId) || [],
       visibleAssistantIds
     )
-    if (!inferredAssistantId) {
+    if (!inferredAssistantId || inferredAssistantId === topic.assistantId) {
       continue
     }
 

@@ -245,6 +245,61 @@ describe('normalizeMobileSyncImportTopics', () => {
     ])
   })
 
+  it('prefers message assistant ownership when visible topic metadata still points at the old assistant', () => {
+    const result = normalizeMobileSyncImportTopics({
+      topLevelTopics: [
+        createTopic({
+          id: 'shared-topic',
+          assistantId: 'assistant-a',
+          name: 'top level topic title',
+          updatedAt: 10
+        })
+      ],
+      embeddedAssistantTopics: [],
+      messages: [createMessage({ id: 'message-1', topicId: 'shared-topic', assistantId: 'assistant-b' })],
+      visibleAssistantIds: new Set(['assistant-a', 'assistant-b'])
+    })
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'shared-topic',
+        assistantId: 'assistant-b',
+        name: 'top level topic title'
+      })
+    ])
+  })
+
+  it('keeps the newer top-level topic ownership when the visible message stream is stale', () => {
+    const result = normalizeMobileSyncImportTopics({
+      topLevelTopics: [
+        createTopic({
+          id: 'shared-topic',
+          assistantId: 'assistant-b',
+          name: 'top level topic title',
+          updatedAt: 200
+        })
+      ],
+      embeddedAssistantTopics: [],
+      messages: [
+        createMessage({
+          id: 'message-1',
+          topicId: 'shared-topic',
+          assistantId: 'assistant-a',
+          updatedAt: 100
+        })
+      ],
+      visibleAssistantIds: new Set(['assistant-a', 'assistant-b'])
+    })
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'shared-topic',
+        assistantId: 'assistant-b',
+        name: 'top level topic title'
+      })
+    ])
+  })
+
   it('drops empty topics carried by stale embedded assistant caches', () => {
     const result = normalizeMobileSyncImportTopics({
       topLevelTopics: [],
