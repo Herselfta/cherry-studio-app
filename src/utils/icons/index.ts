@@ -14,6 +14,7 @@ const MODEL_ICONS_DARK = {
   doubao: require('@/assets/images/llmIcons/dark/doubao.png'),
   qwen: require('@/assets/images/llmIcons/dark/qwen.png'),
   moonshot: require('@/assets/images/llmIcons/dark/moonshot.png'),
+  kimi: require('@/assets/images/llmIcons/dark/moonshot.png'),
   jina: require('@/assets/images/llmIcons/dark/jina.png'),
 
   voyage: require('@/assets/images/llmIcons/dark/voyage.png'),
@@ -54,6 +55,7 @@ const MODEL_ICONS_LIGHT = {
   doubao: require('@/assets/images/llmIcons/light/doubao.png'),
   qwen: require('@/assets/images/llmIcons/light/qwen.png'),
   moonshot: require('@/assets/images/llmIcons/light/moonshot.png'),
+  kimi: require('@/assets/images/llmIcons/light/moonshot.png'),
   jina: require('@/assets/images/llmIcons/light/jina.png'),
 
   voyage: require('@/assets/images/llmIcons/light/voyage.png'),
@@ -152,15 +154,15 @@ const PROVIDER_ICONS_DARK: Record<SystemProviderId | 'default' | 'cherryai', Ima
   voyageai: require('@/assets/images/llmIcons/dark/voyage.png'),
   'aws-bedrock': require('@/assets/images/llmIcons/dark/bedrock.png'),
   poe: require('@/assets/images/llmIcons/dark/poe.png'),
-  sophnet: require('@/assets/images/llmIcons/dark/sophnet.png'),
-  ovms: require('@/assets/images/llmIcons/dark/ovms.png'),
-  vertexai: require('@/assets/images/llmIcons/dark/vertexai.png'),
-  aionly: require('@/assets/images/llmIcons/dark/aiOnly.webp'),
-  longcat: require('@/assets/images/llmIcons/dark/longcat.png'),
-  huggingface: require('@/assets/images/llmIcons/dark/huggingface.png'),
-  'ai-gateway': require('@/assets/images/llmIcons/dark/vercel.png'),
-  cerebras: require('@/assets/images/llmIcons/dark/cerebras.png'),
-  default: require('@/assets/images/llmIcons/dark/openai.png')
+  sophnet: require('@/assets/images/llmIcons/light/sophnet.png'),
+  ovms: require('@/assets/images/llmIcons/light/ovms.png'),
+  vertexai: require('@/assets/images/llmIcons/light/vertexai.png'),
+  aionly: require('@/assets/images/llmIcons/light/aiOnly.webp'),
+  longcat: require('@/assets/images/llmIcons/light/longcat.png'),
+  huggingface: require('@/assets/images/llmIcons/light/huggingface.png'),
+  'ai-gateway': require('@/assets/images/llmIcons/light/vercel.png'),
+  cerebras: require('@/assets/images/llmIcons/light/cerebras.png'),
+  default: require('@/assets/images/llmIcons/light/openai.png')
 }
 
 const PROVIDER_ICONS_LIGHT: Record<SystemProviderId | 'default' | 'cherryai', ImageRequireSource> = {
