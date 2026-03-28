@@ -9,7 +9,7 @@ const MODEL_ICONS_DARK = {
   gpt: require('@/assets/images/llmIcons/dark/openai.png'),
   claude: require('@/assets/images/llmIcons/dark/claude.png'),
   gemini: require('@/assets/images/llmIcons/dark/gemini.png'),
-  grok: require('@/assets/images/llmIcons/dark/grok.png'),
+  grok: require('@/assets/images/llmIcons/dark/grok-model.png'),
   deepseek: require('@/assets/images/llmIcons/dark/deepseek.png'),
   doubao: require('@/assets/images/llmIcons/dark/doubao.png'),
   qwen: require('@/assets/images/llmIcons/dark/qwen.png'),
@@ -50,7 +50,7 @@ const MODEL_ICONS_LIGHT = {
   gpt: require('@/assets/images/llmIcons/light/openai.png'),
   claude: require('@/assets/images/llmIcons/light/claude.png'),
   gemini: require('@/assets/images/llmIcons/light/gemini.png'),
-  grok: require('@/assets/images/llmIcons/light/grok.png'),
+  grok: require('@/assets/images/llmIcons/light/grok-model.png'),
   deepseek: require('@/assets/images/llmIcons/light/deepseek.png'),
   doubao: require('@/assets/images/llmIcons/light/doubao.png'),
   qwen: require('@/assets/images/llmIcons/light/qwen.png'),
@@ -102,7 +102,7 @@ export function getModelIcon(modelId: string, isDark: boolean): ImageRequireSour
 
 const PROVIDER_ICONS_DARK: Record<SystemProviderId | 'default' | 'cherryai', ImageRequireSource> = {
   gemini: require('@/assets/images/llmIcons/dark/google.png'),
-  grok: require('@/assets/images/llmIcons/dark/grok.png'),
+  grok: require('@/assets/images/llmIcons/dark/grok-provider.png'),
   deepseek: require('@/assets/images/llmIcons/dark/deepseek.png'),
   doubao: require('@/assets/images/llmIcons/dark/doubao.png'),
   moonshot: require('@/assets/images/llmIcons/dark/moonshot.png'),
@@ -167,7 +167,7 @@ const PROVIDER_ICONS_DARK: Record<SystemProviderId | 'default' | 'cherryai', Ima
 
 const PROVIDER_ICONS_LIGHT: Record<SystemProviderId | 'default' | 'cherryai', ImageRequireSource> = {
   gemini: require('@/assets/images/llmIcons/light/google.png'),
-  grok: require('@/assets/images/llmIcons/light/grok.png'),
+  grok: require('@/assets/images/llmIcons/light/grok-provider.png'),
   deepseek: require('@/assets/images/llmIcons/light/deepseek.png'),
   doubao: require('@/assets/images/llmIcons/light/doubao.png'),
   moonshot: require('@/assets/images/llmIcons/light/moonshot.png'),
