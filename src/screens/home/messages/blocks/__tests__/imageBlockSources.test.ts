@@ -1,3 +1,4 @@
+import { FileTypes } from '@/types/file'
 import { type ImageMessageBlock, MessageBlockStatus, MessageBlockType } from '@/types/message'
 
 import { normalizeImageSourceUri, resolveImageBlockUris } from '../imageBlockSources'
@@ -27,7 +28,7 @@ describe('imageBlockSources', () => {
       })
     )
 
-    expect(images).toEqual(['https://example.com/generated.png', 'https://example.com/fallback.png'])
+    expect(images).toEqual(['https://example.com/generated.png'])
   })
 
   it('normalizes raw base64 generated images into data urls', () => {
@@ -50,19 +51,24 @@ describe('imageBlockSources', () => {
     expect(normalizeImageSourceUri('C:\\Users\\mac\\image.png')).toBe('file://C:\\Users\\mac\\image.png')
   })
 
-  it('deduplicates repeated sources', () => {
+  it('prefers url over stale file sources', () => {
     const images = resolveImageBlockUris(
       createImageBlock({
-        url: 'https://example.com/shared.png',
-        metadata: {
-          generateImageResponse: {
-            type: 'url',
-            images: ['https://example.com/shared.png']
-          }
+        url: 'data:image/png;base64,abc123',
+        file: {
+          id: 'file-1',
+          name: 'desktop-image',
+          origin_name: 'desktop-image.png',
+          path: '/Users/mac/Desktop/desktop-image.png',
+          size: 12,
+          ext: '.png',
+          type: FileTypes.IMAGE,
+          created_at: 1,
+          count: 1
         }
       })
     )
 
-    expect(images).toEqual(['https://example.com/shared.png'])
+    expect(images).toEqual(['data:image/png;base64,abc123'])
   })
 })

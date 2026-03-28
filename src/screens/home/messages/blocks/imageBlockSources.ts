@@ -4,25 +4,24 @@ import { normalizeImageSourceUri } from '@/utils/imageSource'
 export { normalizeImageSourceUri }
 
 export function resolveImageBlockUris(block: ImageMessageBlock): string[] {
-  const sources: string[] = []
   const generatedImageType = block.metadata?.generateImageResponse?.type
+  const generatedSources = (block.metadata?.generateImageResponse?.images ?? [])
+    .map(image => normalizeImageSourceUri(image, { treatAsBase64: generatedImageType === 'base64' }))
+    .filter((image): image is string => Boolean(image))
 
-  for (const image of block.metadata?.generateImageResponse?.images ?? []) {
-    const normalized = normalizeImageSourceUri(image, { treatAsBase64: generatedImageType === 'base64' })
-    if (normalized) {
-      sources.push(normalized)
-    }
+  if (generatedSources.length > 0) {
+    return [...new Set(generatedSources)]
   }
 
   const urlSource = normalizeImageSourceUri(block.url)
   if (urlSource) {
-    sources.push(urlSource)
+    return [urlSource]
   }
 
   const fileSource = normalizeImageSourceUri(block.file?.path)
   if (fileSource) {
-    sources.push(fileSource)
+    return [fileSource]
   }
 
-  return [...new Set(sources)]
+  return []
 }

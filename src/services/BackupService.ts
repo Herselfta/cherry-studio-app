@@ -152,7 +152,11 @@ export async function materializePortableImageBlocks(
 
         return {
           ...block,
-          file: restoredFile
+          file: restoredFile,
+          // Once the portable bytes are materialized into an app-local file,
+          // prefer that canonical local path and drop any stale inline/data URL
+          // fallback that would otherwise make the same image render twice.
+          url: undefined
         } satisfies ImageMessageBlock
       } catch (error) {
         logger.warn(

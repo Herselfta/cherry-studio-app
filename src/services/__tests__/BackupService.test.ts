@@ -573,6 +573,7 @@ describe('BackupService.materializePortableImageBlocks', () => {
           type: 'image',
           createdAt: 1,
           status: 'success',
+          url: 'data:image/png;base64,abc123',
           file: {
             id: 'image-1',
             name: 'image-1',
@@ -613,6 +614,7 @@ describe('BackupService.materializePortableImageBlocks', () => {
     ])
     expect(restoredBlocks).toEqual([
       expect.objectContaining({
+        url: undefined,
         file: expect.objectContaining({
           id: 'image-1',
           path: 'file:///data/user/0/app/files/Images/image-1.png'
