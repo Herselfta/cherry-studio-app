@@ -217,6 +217,10 @@ export function normalizeMobileSyncExportTopics({
 
   for (const topic of topics) {
     const topicMessages = messagesByTopicId.get(topic.id) || []
+    if (topicMessages.length === 0) {
+      continue
+    }
+
     const assistantId = resolveVisibleAssistantId(topic, topicMessages, visibleAssistantIds)
 
     if (!assistantId) {
@@ -258,7 +262,7 @@ export function normalizeMobileSyncImportTopics({
   }
 
   for (const topic of topLevelTopics) {
-    normalizedTopics.set(topic.id, pickNewerEntity(normalizedTopics.get(topic.id), topic))
+    normalizedTopics.set(topic.id, topic)
   }
 
   const messagesByTopicId = groupMessagesByTopicId(messages)
@@ -296,7 +300,7 @@ export function normalizeMobileSyncImportTopics({
     normalizedTopics.set(topicId, synthesizeTopic(topicId, assistantId, topicMessages))
   }
 
-  return Array.from(normalizedTopics.values())
+  return Array.from(normalizedTopics.values()).filter(topic => (messagesByTopicId.get(topic.id) || []).length > 0)
 }
 
 export function normalizePortableConversationMessages(messages: Message[]): Message[] {
@@ -375,10 +379,10 @@ export function resolveMobileConversationSync({
   const incomingBlockIds = new Set(incomingMessageBlocks.map(block => block.id))
   const isStaleImport = Boolean(previousLedgerEntry && exportedAt <= previousLedgerEntry.lastImportedExportedAt)
 
-  const deletedTopicIds = isStaleImport
+  const ledgerDeletedTopicIds = isStaleImport
     ? []
     : (previousLedgerEntry?.topicIds || []).filter(topicId => !incomingTopicIds.has(topicId))
-  const deletedTopicIdSet = new Set(deletedTopicIds)
+  const deletedTopicIdSet = new Set(ledgerDeletedTopicIds)
 
   const directDeletedMessageIds = isStaleImport
     ? []
@@ -411,6 +415,14 @@ export function resolveMobileConversationSync({
       messageMap.set(message.id, pickNewerEntity(messageMap.get(message.id), message))
     }
   }
+
+  const topicIdsWithMessages = new Set(Array.from(messageMap.values()).map(message => message.topicId))
+  const prunedEmptyTopicIds = Array.from(topicMap.keys()).filter(topicId => !topicIdsWithMessages.has(topicId))
+  for (const topicId of prunedEmptyTopicIds) {
+    topicMap.delete(topicId)
+  }
+
+  const deletedTopicIds = Array.from(new Set([...ledgerDeletedTopicIds, ...prunedEmptyTopicIds]))
 
   const finalMessageIds = new Set(messageMap.keys())
   const directDeletedBlockIds = isStaleImport

@@ -19,8 +19,11 @@ import { assistantService } from './AssistantService'
 import { cleanupOrphanedImportedFiles, materializePortableImageBlocks, type ProgressUpdate } from './BackupService'
 import { readBase64File } from './FileService'
 import {
+  getLegacyMobileSyncLedgerEntry,
   getMobileSyncLedgerEntry,
   getOrCreateMobileSyncSourceDeviceId,
+  removeLegacyMobileSyncLedgerEntry,
+  writeLegacyMobileSyncLedgerEntry,
   writeMobileSyncLedgerEntry
 } from './mobileSyncLedger'
 import {
@@ -333,7 +336,11 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       }) as Assistant
   )
   const shouldUseSourceAwareImport = parsed.version >= 2 && Boolean(parsed.sourceDeviceId)
-  const previousLedgerEntry = shouldUseSourceAwareImport ? getMobileSyncLedgerEntry(parsed.sourceDeviceId!) : undefined
+  const legacySourceKey = parsed.sourcePlatform || parsed.source
+  const deviceLedgerEntry = shouldUseSourceAwareImport ? getMobileSyncLedgerEntry(parsed.sourceDeviceId!) : undefined
+  const legacyLedgerEntry =
+    shouldUseSourceAwareImport && !deviceLedgerEntry ? getLegacyMobileSyncLedgerEntry(legacySourceKey) : undefined
+  const previousLedgerEntry = deviceLedgerEntry || legacyLedgerEntry
 
   logger.info('Importing mobile sync payload', {
     version: parsed.version,
@@ -341,7 +348,9 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     sourcePlatform: parsed.sourcePlatform,
     sourceDeviceId: parsed.sourceDeviceId,
     sourceAware: shouldUseSourceAwareImport,
-    hasPreviousLedgerEntry: Boolean(previousLedgerEntry)
+    hasPreviousLedgerEntry: Boolean(previousLedgerEntry),
+    hasDeviceLedgerEntry: Boolean(deviceLedgerEntry),
+    hasLegacyLedgerEntry: Boolean(legacyLedgerEntry)
   })
 
   if (shouldUseSourceAwareImport && !previousLedgerEntry) {
@@ -404,6 +413,12 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     await topicDatabase.upsertTopics(normalizedIncomingTopics)
     await messageDatabase.upsertMessages(normalizedIncomingMessages)
     await messageBlockDatabase.upsertBlocks(restoredMessageBlocks)
+    writeLegacyMobileSyncLedgerEntry(legacySourceKey, {
+      lastImportedExportedAt: parsed.exportedAt,
+      topicIds: normalizedIncomingTopics.map(topic => topic.id),
+      messageIds: normalizedIncomingMessages.map(message => message.id),
+      blockIds: restoredMessageBlocks.map(block => block.id)
+    })
   } else {
     const [currentTopics, currentMessages, currentMessageBlocks, currentAssistants] = await Promise.all([
       topicDatabase.getTopics(),
@@ -484,6 +499,7 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
 
     if (!resolvedConversation.isStaleImport && resolvedConversation.nextLedgerEntry) {
       writeMobileSyncLedgerEntry(parsed.sourceDeviceId!, resolvedConversation.nextLedgerEntry)
+      removeLegacyMobileSyncLedgerEntry(legacySourceKey)
     } else if (resolvedConversation.isStaleImport) {
       logger.warn(
         `Skipping destructive mobile sync actions for stale payload from ${parsed.sourceDeviceId} exported at ${parsed.exportedAt}`

@@ -80,6 +80,7 @@ describe('buildMobileSyncAssistantPayload', () => {
         createTopic({ id: 'external-topic', assistantId: 'quick' })
       ],
       messages: [
+        createMessage({ id: 'message-default-1', topicId: 'default-topic', assistantId: 'default' }),
         createMessage({ id: 'message-1', topicId: 'external-topic', assistantId: 'external-1' }),
         createMessage({ id: 'message-2', topicId: 'helper-topic', assistantId: 'quick' })
       ]
@@ -101,6 +102,19 @@ describe('buildMobileSyncAssistantPayload', () => {
     expect(normalizedTopics.map(topic => topic.id)).toEqual(expect.arrayContaining(['default-topic', 'external-topic']))
     expect(normalizedTopics.map(topic => topic.id)).not.toContain('helper-topic')
     expect(result.assistants.find(assistant => assistant.id === 'quick')).toBeUndefined()
+  })
+
+  it('excludes empty topics from portable mobile sync exports', () => {
+    const result = normalizeMobileSyncExportTopics({
+      assistants: [createAssistant({ id: 'default', name: 'Default', type: 'system', topics: [] })],
+      topics: [
+        createTopic({ id: 'empty-topic', assistantId: 'default' }),
+        createTopic({ id: 'message-topic', assistantId: 'default' })
+      ],
+      messages: [createMessage({ id: 'message-1', topicId: 'message-topic', assistantId: 'default' })]
+    })
+
+    expect(result.map(topic => topic.id)).toEqual(['message-topic'])
   })
 
   it('inlines uploaded image bytes for cross-device mobile sync', () => {
@@ -200,13 +214,13 @@ describe('buildMobileSyncAssistantPayload', () => {
 })
 
 describe('normalizeMobileSyncImportTopics', () => {
-  it('prefers fresher embedded topic metadata and re-infers assistant ownership from visible messages', () => {
+  it('treats top-level topic records as canonical and re-infers assistant ownership from visible messages', () => {
     const result = normalizeMobileSyncImportTopics({
       topLevelTopics: [
         createTopic({
           id: 'shared-topic',
           assistantId: 'quick',
-          name: 'stale top level name',
+          name: 'top level name',
           updatedAt: 10
         })
       ],
@@ -214,7 +228,7 @@ describe('normalizeMobileSyncImportTopics', () => {
         createTopic({
           id: 'shared-topic',
           assistantId: 'external-1',
-          name: 'fresh embedded name',
+          name: 'embedded name should not win',
           updatedAt: 20
         })
       ],
@@ -226,9 +240,20 @@ describe('normalizeMobileSyncImportTopics', () => {
       expect.objectContaining({
         id: 'shared-topic',
         assistantId: 'external-1',
-        name: 'fresh embedded name'
+        name: 'top level name'
       })
     ])
+  })
+
+  it('drops empty topics carried by stale embedded assistant caches', () => {
+    const result = normalizeMobileSyncImportTopics({
+      topLevelTopics: [],
+      embeddedAssistantTopics: [createTopic({ id: 'empty-topic', assistantId: 'default' })],
+      messages: [],
+      visibleAssistantIds: new Set(['default'])
+    })
+
+    expect(result).toEqual([])
   })
 })
 
@@ -379,5 +404,29 @@ describe('resolveMobileConversationSync', () => {
     expect(result.topics.map(topic => topic.id)).toEqual(
       expect.arrayContaining(['local-topic', 'previously-synced-topic'])
     )
+  })
+
+  it('prunes empty ghost topics during reconciliation so they cannot survive as local-only leftovers', () => {
+    const result = resolveMobileConversationSync({
+      currentTopics: [
+        createTopic({ id: 'empty-local-topic', assistantId: 'default' }),
+        createTopic({ id: 'shared-topic', assistantId: 'default' })
+      ],
+      incomingTopics: [createTopic({ id: 'shared-topic', assistantId: 'default' })],
+      currentMessages: [createMessage({ id: 'shared-message', assistantId: 'default', topicId: 'shared-topic' })],
+      incomingMessages: [createMessage({ id: 'shared-message', assistantId: 'default', topicId: 'shared-topic' })],
+      currentMessageBlocks: [],
+      incomingMessageBlocks: [],
+      exportedAt: 20,
+      previousLedgerEntry: {
+        lastImportedExportedAt: 10,
+        topicIds: ['shared-topic'],
+        messageIds: ['shared-message'],
+        blockIds: []
+      }
+    })
+
+    expect(result.deletedTopicIds).toEqual(['empty-local-topic'])
+    expect(result.topics.map(topic => topic.id)).toEqual(['shared-topic'])
   })
 })
