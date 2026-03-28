@@ -1,6 +1,5 @@
 import {
   assistantDatabase,
-  mcpDatabase,
   messageBlockDatabase,
   messageDatabase,
   providerDatabase,
@@ -13,12 +12,11 @@ import { getSystemAssistants } from '@/config/assistants'
 import { loggerService } from '@/services/LoggerService'
 import { preferenceService } from '@/services/PreferenceService'
 import type { Assistant, Provider, Topic } from '@/types/assistant'
-import type { MCPServer } from '@/types/mcp'
 import type { Message, MessageBlock } from '@/types/message'
 import type { WebSearchProvider } from '@/types/websearch'
 
 import { assistantService } from './AssistantService'
-import { getThemeModeFromBackupSettings, materializePortableImageBlocks, type ProgressUpdate } from './BackupService'
+import { materializePortableImageBlocks, type ProgressUpdate } from './BackupService'
 import { readBase64File } from './FileService'
 import {
   buildMobileSyncAssistantPayload,
@@ -37,7 +35,6 @@ export const MOBILE_SYNC_FILE_MARKER = '.mobile-sync.'
 
 type SyncSettings = {
   userName?: string
-  theme?: string
   avatar?: string
 }
 
@@ -54,15 +51,11 @@ type SyncData = {
     searchWithTime?: boolean
     maxResults?: number
   }
-  mcp: {
-    servers: MCPServer[]
-  }
   settings: SyncSettings
   topics: SyncTopic[]
   messages: SyncMessage[]
   messageBlocks: SyncMessageBlock[]
   portableImageAssets?: PortableSyncImageAsset[]
-  localStorage: Record<string, string>
 }
 
 type SyncTopic = Omit<Topic, 'createdAt' | 'updatedAt'> & {
@@ -89,6 +82,13 @@ type MobileSyncPayload = {
 }
 
 type OnProgressCallback = (update: ProgressUpdate) => void
+
+export function buildPortableSyncSettings(settings: { userName?: string }, avatar?: string | null): SyncSettings {
+  return {
+    userName: settings.userName,
+    avatar: avatar || undefined
+  }
+}
 
 function sanitizeAssistantForSync(assistant: Assistant): Assistant {
   return {
@@ -192,16 +192,14 @@ export function isMobileSyncRemoteFile(fileName: string): boolean {
 }
 
 export async function exportMobileSyncPayload(): Promise<string> {
-  const [providers, websearchProviders, externalAssistants, topics, messages, messageBlocks, mcpServers] =
-    await Promise.all([
-      providerDatabase.getAllProviders(),
-      websearchProviderDatabase.getAllWebSearchProviders(),
-      assistantService.getExternalAssistants(),
-      topicService.getTopics(),
-      messageDatabase.getAllMessages(),
-      messageBlockDatabase.getAllBlocks(),
-      mcpDatabase.getMcps()
-    ])
+  const [providers, websearchProviders, externalAssistants, topics, messages, messageBlocks] = await Promise.all([
+    providerDatabase.getAllProviders(),
+    websearchProviderDatabase.getAllWebSearchProviders(),
+    assistantService.getExternalAssistants(),
+    topicService.getTopics(),
+    messageDatabase.getAllMessages(),
+    messageBlockDatabase.getAllBlocks()
+  ])
 
   let defaultAssistant: Assistant | null = null
   try {
@@ -211,7 +209,6 @@ export async function exportMobileSyncPayload(): Promise<string> {
   }
 
   const userName = await preferenceService.get('user.name')
-  const theme = await preferenceService.get('ui.theme_mode')
   const avatar = await preferenceService.get('user.avatar')
   const searchWithTime = await preferenceService.get('websearch.search_with_time')
   const maxResults = await preferenceService.get('websearch.max_results')
@@ -251,19 +248,13 @@ export async function exportMobileSyncPayload(): Promise<string> {
         searchWithTime,
         maxResults
       },
-      mcp: {
-        servers: mcpServers
-      },
       settings: {
-        userName,
-        theme,
-        avatar: avatar || undefined
+        ...buildPortableSyncSettings({ userName }, avatar)
       },
       topics: normalizedTopics.map(toSyncTopic),
       messages: normalizedMessages.map(toSyncMessage),
       messageBlocks: normalizedMessageBlocks.map(toSyncMessageBlock),
-      portableImageAssets,
-      localStorage: {}
+      portableImageAssets
     }
   }
 
@@ -299,17 +290,8 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
   )
   await assistantDatabase.upsertAssistants(allAssistants)
 
-  if (parsed.data.mcp.servers.length > 0) {
-    await mcpDatabase.upsertMcps(parsed.data.mcp.servers)
-  }
-
   if (parsed.data.settings.userName) {
     await preferenceService.set('user.name', parsed.data.settings.userName)
-  }
-
-  const themeMode = getThemeModeFromBackupSettings({ theme: parsed.data.settings.theme } as any)
-  if (themeMode) {
-    await preferenceService.set('ui.theme_mode', themeMode)
   }
 
   if (parsed.data.settings.avatar) {

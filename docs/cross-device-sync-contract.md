@@ -34,10 +34,18 @@ This note defines the intended boundary between the app restore path for desktop
 
 - Purpose: merge shared data between devices.
 - Behavior: upsert shared entities without wiping the target device.
+- Source of truth:
+  - Top-level `topics/messages/messageBlocks` are the canonical conversation records.
+  - `assistant.topics` is retained only as a compatibility/sidebar index and must be rebuilt from top-level topics during import.
 - Model behavior:
   - Sync per-assistant `model` and `defaultModel`.
   - Does not sync app-global or desktop-global default model state.
   - Does not treat helper/system-only assistants such as `quick` and `translate` as normal cross-device assistants.
+- Settings boundary:
+  - Sync portable identity state such as `userName` and `avatar`.
+  - Do not sync per-device UI preferences like `theme`.
+  - Do not sync desktop-only `localStorage` keys such as `language` or `memory_currentUserId`.
+  - Do not sync device-specific MCP server registries.
 - References:
   - `/Users/mac/GitHub/cherry-studio-app/src/services/MobileSyncService.ts`
   - `/Users/mac/GitHub/cherry-studio-app/src/services/mobileSyncUtils.ts`
@@ -48,4 +56,5 @@ This note defines the intended boundary between the app restore path for desktop
 
 - Do not map desktop `llm.defaultModel` onto the default assistant's active `model`.
 - Do not drop `assistant.model` during `mobile sync` export/import.
+- Do not treat `assistant.topics` as the primary cross-device topic source.
 - If assistant model semantics change, update both desktop and app tests together.
