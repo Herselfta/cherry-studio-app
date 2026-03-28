@@ -21,6 +21,13 @@ type NormalizeMobileSyncExportTopicsParams = {
   topics: Topic[]
 }
 
+type NormalizeMobileSyncImportTopicsParams = {
+  topLevelTopics: Topic[]
+  embeddedAssistantTopics: Topic[]
+  messages: Message[]
+  visibleAssistantIds?: Set<string>
+}
+
 type ResolveMobileConversationSyncParams = {
   currentTopics: Topic[]
   incomingTopics: Topic[]
@@ -228,6 +235,60 @@ export function normalizeMobileSyncExportTopics({
     }
 
     const assistantId = resolveVisibleAssistantId(undefined, topicMessages, visibleAssistantIds)
+    if (!assistantId) {
+      continue
+    }
+
+    normalizedTopics.set(topicId, synthesizeTopic(topicId, assistantId, topicMessages))
+  }
+
+  return Array.from(normalizedTopics.values())
+}
+
+export function normalizeMobileSyncImportTopics({
+  topLevelTopics,
+  embeddedAssistantTopics,
+  messages,
+  visibleAssistantIds
+}: NormalizeMobileSyncImportTopicsParams): Topic[] {
+  const normalizedTopics = new Map<string, Topic>()
+
+  for (const topic of embeddedAssistantTopics) {
+    normalizedTopics.set(topic.id, topic)
+  }
+
+  for (const topic of topLevelTopics) {
+    normalizedTopics.set(topic.id, pickNewerEntity(normalizedTopics.get(topic.id), topic))
+  }
+
+  const messagesByTopicId = groupMessagesByTopicId(messages)
+
+  for (const [topicId, topic] of normalizedTopics.entries()) {
+    if (!visibleAssistantIds || visibleAssistantIds.has(topic.assistantId)) {
+      continue
+    }
+
+    const inferredAssistantId = resolveVisibleAssistantId(
+      topic,
+      messagesByTopicId.get(topicId) || [],
+      visibleAssistantIds
+    )
+    if (!inferredAssistantId) {
+      continue
+    }
+
+    normalizedTopics.set(topicId, {
+      ...topic,
+      assistantId: inferredAssistantId
+    })
+  }
+
+  for (const [topicId, topicMessages] of messagesByTopicId.entries()) {
+    if (normalizedTopics.has(topicId)) {
+      continue
+    }
+
+    const assistantId = resolveVisibleAssistantId(undefined, topicMessages, visibleAssistantIds || new Set())
     if (!assistantId) {
       continue
     }

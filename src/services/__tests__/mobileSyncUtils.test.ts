@@ -2,6 +2,7 @@ import {
   buildMobileSyncAssistantPayload,
   collectPortableSyncImageAssets,
   normalizeMobileSyncExportTopics,
+  normalizeMobileSyncImportTopics,
   normalizePortableConversationMessages,
   resolveMobileConversationSync
 } from '@/services/mobileSyncUtils'
@@ -194,6 +195,39 @@ describe('buildMobileSyncAssistantPayload', () => {
     expect(result.defaultAssistant.topics.map(topic => topic.id)).toEqual(['fresh-default-topic'])
     expect(result.assistants.find(assistant => assistant.id === 'external-1')?.topics.map(topic => topic.id)).toEqual([
       'fresh-external-topic'
+    ])
+  })
+})
+
+describe('normalizeMobileSyncImportTopics', () => {
+  it('prefers fresher embedded topic metadata and re-infers assistant ownership from visible messages', () => {
+    const result = normalizeMobileSyncImportTopics({
+      topLevelTopics: [
+        createTopic({
+          id: 'shared-topic',
+          assistantId: 'quick',
+          name: 'stale top level name',
+          updatedAt: 10
+        })
+      ],
+      embeddedAssistantTopics: [
+        createTopic({
+          id: 'shared-topic',
+          assistantId: 'external-1',
+          name: 'fresh embedded name',
+          updatedAt: 20
+        })
+      ],
+      messages: [createMessage({ id: 'message-1', topicId: 'shared-topic', assistantId: 'external-1' })],
+      visibleAssistantIds: new Set(['default', 'external-1'])
+    })
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'shared-topic',
+        assistantId: 'external-1',
+        name: 'fresh embedded name'
+      })
     ])
   })
 })

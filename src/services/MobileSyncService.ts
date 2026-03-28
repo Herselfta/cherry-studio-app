@@ -27,6 +27,7 @@ import {
   buildMobileSyncAssistantPayload,
   collectPortableSyncImageAssets,
   normalizeMobileSyncExportTopics,
+  normalizeMobileSyncImportTopics,
   normalizePortableConversationMessages,
   type PortableSyncImageAsset,
   resolveMobileConversationSync
@@ -252,6 +253,19 @@ export async function exportMobileSyncPayload(): Promise<string> {
   const normalizedMessageBlocks = messageBlocks.filter(block => normalizedMessageIds.has(block.messageId))
   const portableImageAssets = collectPortableSyncImageAssets(normalizedMessageBlocks, readBase64File)
 
+  logger.info('Exporting mobile sync payload', {
+    version: MOBILE_SYNC_SCHEMA_VERSION,
+    sourcePlatform: 'mobile',
+    sourceDeviceId,
+    rawTopicCount: topics.length,
+    normalizedTopicCount: normalizedTopics.length,
+    rawMessageCount: messages.length,
+    normalizedMessageCount: normalizedMessages.length,
+    rawBlockCount: messageBlocks.length,
+    normalizedBlockCount: normalizedMessageBlocks.length,
+    portableImageAssetCount: portableImageAssets.length
+  })
+
   const { defaultAssistant: syncDefaultAssistant, assistants: syncAssistants } = buildMobileSyncAssistantPayload({
     assistants: mobileSyncAssistants,
     fallbackAssistants: defaultAssistant ? [defaultAssistant] : [getSystemAssistants()[0]],
@@ -330,6 +344,12 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     hasPreviousLedgerEntry: Boolean(previousLedgerEntry)
   })
 
+  if (shouldUseSourceAwareImport && !previousLedgerEntry) {
+    logger.warn(
+      `First source-aware mobile sync import detected for ${parsed.sourceDeviceId}. Deletions will become active after this baseline import.`
+    )
+  }
+
   if (parsed.data.settings.userName) {
     await preferenceService.set('user.name', parsed.data.settings.userName)
   }
@@ -349,15 +369,40 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
   onProgress({ step: 'restore_settings', status: 'completed' })
   onProgress({ step: 'restore_messages', status: 'in_progress' })
 
-  const restoredMessageBlocks = await materializePortableImageBlocks(
+  const rawIncomingTopics = parsed.data.topics.map(toMobileTopic)
+  const rawIncomingMessages = parsed.data.messages.map(toMobileMessage)
+  const normalizedIncomingMessages = normalizePortableConversationMessages(rawIncomingMessages)
+  const normalizedIncomingMessageIdSet = new Set(normalizedIncomingMessages.map(message => message.id))
+  const rawRestoredMessageBlocks = await materializePortableImageBlocks(
     parsed.data.messageBlocks.map(toMobileMessageBlock),
     parsed.data.portableImageAssets || []
   )
+  const restoredMessageBlocks = rawRestoredMessageBlocks.filter(block =>
+    normalizedIncomingMessageIdSet.has(block.messageId)
+  )
+  const normalizedIncomingTopics = normalizeMobileSyncImportTopics({
+    topLevelTopics: rawIncomingTopics,
+    embeddedAssistantTopics: allAssistants.flatMap(assistant => assistant.topics || []),
+    messages: normalizedIncomingMessages,
+    visibleAssistantIds: new Set(allAssistants.map(assistant => assistant.id))
+  })
+
+  if (
+    rawIncomingMessages.length !== normalizedIncomingMessages.length ||
+    rawRestoredMessageBlocks.length !== restoredMessageBlocks.length
+  ) {
+    logger.info('Normalized legacy-style mobile sync snapshot before import', {
+      rawIncomingMessageCount: rawIncomingMessages.length,
+      normalizedIncomingMessageCount: normalizedIncomingMessages.length,
+      rawIncomingBlockCount: rawRestoredMessageBlocks.length,
+      normalizedIncomingBlockCount: restoredMessageBlocks.length
+    })
+  }
 
   if (!shouldUseSourceAwareImport) {
     await assistantDatabase.upsertAssistants(allAssistants)
-    await topicDatabase.upsertTopics(parsed.data.topics.map(toMobileTopic))
-    await messageDatabase.upsertMessages(parsed.data.messages.map(toMobileMessage))
+    await topicDatabase.upsertTopics(normalizedIncomingTopics)
+    await messageDatabase.upsertMessages(normalizedIncomingMessages)
     await messageBlockDatabase.upsertBlocks(restoredMessageBlocks)
   } else {
     const [currentTopics, currentMessages, currentMessageBlocks, currentAssistants] = await Promise.all([
@@ -368,13 +413,32 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     ])
     const resolvedConversation = resolveMobileConversationSync({
       currentTopics,
-      incomingTopics: parsed.data.topics.map(toMobileTopic),
+      incomingTopics: normalizedIncomingTopics,
       currentMessages,
-      incomingMessages: parsed.data.messages.map(toMobileMessage),
+      incomingMessages: normalizedIncomingMessages,
       currentMessageBlocks,
       incomingMessageBlocks: restoredMessageBlocks,
       exportedAt: parsed.exportedAt,
       previousLedgerEntry
+    })
+    logger.info('Resolved mobile sync conversation snapshot', {
+      sourceDeviceId: parsed.sourceDeviceId,
+      previousLedgerTopicCount: previousLedgerEntry?.topicIds.length || 0,
+      previousLedgerMessageCount: previousLedgerEntry?.messageIds.length || 0,
+      previousLedgerBlockCount: previousLedgerEntry?.blockIds.length || 0,
+      rawIncomingTopicCount: rawIncomingTopics.length,
+      rawIncomingMessageCount: rawIncomingMessages.length,
+      rawIncomingBlockCount: rawRestoredMessageBlocks.length,
+      normalizedIncomingTopicCount: normalizedIncomingTopics.length,
+      normalizedIncomingMessageCount: normalizedIncomingMessages.length,
+      normalizedIncomingBlockCount: restoredMessageBlocks.length,
+      resolvedTopicCount: resolvedConversation.topics.length,
+      resolvedMessageCount: resolvedConversation.messages.length,
+      resolvedBlockCount: resolvedConversation.messageBlocks.length,
+      deletedTopicCount: resolvedConversation.deletedTopicIds.length,
+      deletedMessageCount: resolvedConversation.deletedMessageIds.length,
+      deletedBlockCount: resolvedConversation.deletedBlockIds.length,
+      isStaleImport: resolvedConversation.isStaleImport
     })
     const systemAssistantIds = new Set(getSystemAssistants().map(assistant => assistant.id))
     const resolvedAssistantPayload = buildMobileSyncAssistantPayload({
