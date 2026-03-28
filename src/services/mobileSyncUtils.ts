@@ -400,7 +400,9 @@ export function resolveMobileConversationSync({
     }
   }
   for (const topic of incomingTopics) {
-    topicMap.set(topic.id, pickNewerEntity(topicMap.get(topic.id), topic))
+    // Top-level incoming topics are the canonical source for portable sync metadata.
+    // Let them replace local title / assistant ownership even if the target timestamp is newer.
+    topicMap.set(topic.id, topic)
   }
 
   const finalTopicIds = new Set(topicMap.keys())

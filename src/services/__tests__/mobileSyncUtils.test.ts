@@ -429,4 +429,38 @@ describe('resolveMobileConversationSync', () => {
     expect(result.deletedTopicIds).toEqual(['empty-local-topic'])
     expect(result.topics.map(topic => topic.id)).toEqual(['shared-topic'])
   })
+
+  it('treats incoming top-level topics as canonical for rename and assistant migration metadata', () => {
+    const result = resolveMobileConversationSync({
+      currentTopics: [
+        createTopic({
+          id: 'shared-topic',
+          assistantId: 'assistant-a',
+          name: 'local title should lose',
+          updatedAt: 999
+        })
+      ],
+      incomingTopics: [
+        createTopic({
+          id: 'shared-topic',
+          assistantId: 'assistant-b',
+          name: 'incoming renamed title',
+          updatedAt: 100
+        })
+      ],
+      currentMessages: [createMessage({ id: 'shared-message', assistantId: 'assistant-a', topicId: 'shared-topic' })],
+      incomingMessages: [createMessage({ id: 'shared-message', assistantId: 'assistant-b', topicId: 'shared-topic' })],
+      currentMessageBlocks: [],
+      incomingMessageBlocks: [],
+      exportedAt: 20
+    })
+
+    expect(result.topics).toEqual([
+      expect.objectContaining({
+        id: 'shared-topic',
+        assistantId: 'assistant-b',
+        name: 'incoming renamed title'
+      })
+    ])
+  })
 })
