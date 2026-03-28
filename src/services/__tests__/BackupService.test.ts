@@ -183,6 +183,35 @@ describe('BackupService.transformBackupData', () => {
     expect(parsed.portableLanguage).toBe('zh-Hans-CN')
   })
 
+  it('falls back to desktop settings.language when migration localStorage has no language key', () => {
+    const backupData = JSON.stringify({
+      localStorage: {
+        'persist:cherry-studio': JSON.stringify({
+          assistants: JSON.stringify({
+            defaultAssistant: { id: 'default', topics: [] },
+            assistants: []
+          }),
+          llm: JSON.stringify({ providers: [] }),
+          websearch: JSON.stringify({ providers: [] }),
+          settings: JSON.stringify({
+            userName: 'Desktop User',
+            theme: 'dark',
+            language: 'zh-CN'
+          })
+        })
+      },
+      indexedDB: {
+        topics: [],
+        message_blocks: [],
+        settings: []
+      }
+    })
+
+    const parsed = transformBackupData(backupData)
+
+    expect(parsed.portableLanguage).toBe('zh-Hans-CN')
+  })
+
   it('extracts portable image assets from desktop migration payloads', () => {
     const backupData = JSON.stringify({
       localStorage: {
@@ -306,6 +335,107 @@ describe('BackupService.transformBackupData', () => {
     )
     expect(normalized.systemAssistants.find(assistant => assistant.id === 'translate')).toEqual(
       expect.objectContaining({ id: 'translate', name: 'Mobile Translate', emoji: '🌐' })
+    )
+  })
+
+  it('bridges desktop llm system models into mobile default/quick/translate assistants', () => {
+    const desktopDefaultModel = {
+      id: 'desktop-default-model',
+      provider: 'openai',
+      name: 'Desktop Default Model',
+      group: 'default'
+    }
+    const desktopQuickModel = {
+      id: 'desktop-quick-model',
+      provider: 'anthropic',
+      name: 'Desktop Quick Model',
+      group: 'quick'
+    }
+    const desktopTranslateModel = {
+      id: 'desktop-translate-model',
+      provider: 'google',
+      name: 'Desktop Translate Model',
+      group: 'translate'
+    }
+    const desktopTopicNamingModel = {
+      id: 'desktop-topic-naming-model',
+      provider: 'openrouter',
+      name: 'Desktop Topic Naming Model',
+      group: 'topicNaming'
+    }
+
+    const normalized = normalizeAssistantsFromBackup(
+      {
+        defaultAssistant: {
+          id: 'default',
+          name: 'Desktop Default Assistant',
+          emoji: '🤖',
+          prompt: '',
+          topics: [],
+          type: 'assistant'
+        },
+        assistants: []
+      },
+      {
+        providers: [],
+        defaultModel: desktopDefaultModel,
+        quickModel: desktopQuickModel,
+        translateModel: desktopTranslateModel,
+        topicNamingModel: desktopTopicNamingModel
+      }
+    )
+
+    expect(normalized.systemAssistants.find(assistant => assistant.id === 'default')).toEqual(
+      expect.objectContaining({
+        defaultModel: desktopDefaultModel,
+        model: desktopDefaultModel
+      })
+    )
+    expect(normalized.systemAssistants.find(assistant => assistant.id === 'quick')).toEqual(
+      expect.objectContaining({
+        defaultModel: desktopQuickModel,
+        model: desktopQuickModel
+      })
+    )
+    expect(normalized.systemAssistants.find(assistant => assistant.id === 'translate')).toEqual(
+      expect.objectContaining({
+        defaultModel: desktopTranslateModel,
+        model: desktopTranslateModel
+      })
+    )
+  })
+
+  it('falls back to desktop topicNamingModel for quick assistant when old migrations lack quickModel', () => {
+    const desktopTopicNamingModel = {
+      id: 'desktop-topic-naming-model',
+      provider: 'openrouter',
+      name: 'Desktop Topic Naming Model',
+      group: 'topicNaming'
+    }
+
+    const normalized = normalizeAssistantsFromBackup(
+      {
+        defaultAssistant: {
+          id: 'default',
+          name: 'Desktop Default Assistant',
+          emoji: '🤖',
+          prompt: '',
+          topics: [],
+          type: 'assistant'
+        },
+        assistants: []
+      },
+      {
+        providers: [],
+        topicNamingModel: desktopTopicNamingModel
+      }
+    )
+
+    expect(normalized.systemAssistants.find(assistant => assistant.id === 'quick')).toEqual(
+      expect.objectContaining({
+        defaultModel: desktopTopicNamingModel,
+        model: desktopTopicNamingModel
+      })
     )
   })
 

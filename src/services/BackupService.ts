@@ -31,7 +31,7 @@ import type {
   Setting
 } from '@/types/databackup'
 import type { FileMetadata } from '@/types/file'
-import { type ImageMessageBlock, type Message,MessageBlockType } from '@/types/message'
+import { type ImageMessageBlock, type Message, MessageBlockType } from '@/types/message'
 import { storage } from '@/utils'
 
 import { resetAppInitializationState, runAppDataMigrations } from './AppInitializationService'
@@ -68,6 +68,8 @@ type NormalizedBackupAssistants = {
   externalAssistants: Assistant[]
   source: 'app-native' | 'desktop-migration'
 }
+
+type BackupLlmState = ImportReduxData['llm']
 
 function mergeAssistantsById(assistants: Assistant[]): Assistant[] {
   const assistantMap = new Map<string, Assistant>()
@@ -209,7 +211,8 @@ async function loadSystemAssistantsForBackup(): Promise<Assistant[]> {
 }
 
 export function normalizeAssistantsFromBackup(
-  assistantsState: ImportReduxData['assistants']
+  assistantsState: ImportReduxData['assistants'],
+  llmState?: BackupLlmState
 ): NormalizedBackupAssistants {
   const seededSystemAssistants = getSystemAssistants()
   const seededSystemAssistantMap = new Map(seededSystemAssistants.map(assistant => [assistant.id, assistant]))
@@ -248,13 +251,32 @@ export function normalizeAssistantsFromBackup(
         (assistantsState.presets ?? []).filter(assistant => !isSystemAssistantId(assistant.id))
       : []
 
+  const desktopSystemAssistantModels: Partial<Record<SystemAssistantId, BackupLlmState['defaultModel']>> =
+    source === 'desktop-migration'
+      ? {
+          // Desktop keeps system assistant model selections in the llm slice
+          // instead of persisting them on the assistant objects themselves.
+          // Bridge those fields during migration restore so default/quick/
+          // translate keep the user's actual selected models on mobile.
+          default: llmState?.defaultModel,
+          quick: llmState?.quickModel ?? llmState?.topicNamingModel,
+          translate: llmState?.translateModel
+        }
+      : {}
+
   const systemAssistants = SYSTEM_ASSISTANT_IDS.map(assistantId => {
     const seededAssistant = seededSystemAssistantMap.get(assistantId)!
     const persistedAssistant = persistedSystemAssistantMap.get(assistantId)
+    const bridgedDesktopModel = desktopSystemAssistantModels[assistantId]
+    const resolvedDefaultModel = bridgedDesktopModel ?? persistedAssistant?.defaultModel ?? seededAssistant.defaultModel
+    const resolvedModel =
+      bridgedDesktopModel ?? persistedAssistant?.model ?? resolvedDefaultModel ?? seededAssistant.model
 
     return {
       ...seededAssistant,
       ...persistedAssistant,
+      defaultModel: resolvedDefaultModel,
+      model: resolvedModel,
       id: assistantId,
       type: 'system' as const
     } satisfies Assistant
@@ -466,7 +488,7 @@ async function restoreReduxData(
   providerService.invalidateCache()
   await providerService.refreshAllProvidersCache()
 
-  const { systemAssistants, externalAssistants, source } = normalizeAssistantsFromBackup(data.assistants)
+  const { systemAssistants, externalAssistants, source } = normalizeAssistantsFromBackup(data.assistants, data.llm)
   const assistants = [...systemAssistants, ...externalAssistants]
   const assistantsWithAvatarCount = assistants.filter(assistant => Boolean(assistant.avatar)).length
 
@@ -537,6 +559,7 @@ async function restoreParsedBackupData(data: string, onProgress: OnProgressCallb
     // language (commonly English on test devices).
     storage.set('language', portableLanguage)
     await i18n.changeLanguage(portableLanguage)
+    assistantService.resetBuiltInAssistants()
   }
 }
 
@@ -624,7 +647,11 @@ export function transformBackupData(data: string): {
     settings: settingsData
   })
   const portableLanguage =
-    typeof localStorageData?.language === 'string' ? normalizeLanguageTag(localStorageData.language) : undefined
+    typeof localStorageData?.language === 'string'
+      ? normalizeLanguageTag(localStorageData.language)
+      : typeof settingsData.language === 'string'
+        ? normalizeLanguageTag(settingsData.language)
+        : undefined
   localStorageData = null
 
   const assistantsState: ImportReduxData['assistants'] = JSON.parse(rawReduxData.assistants)
@@ -646,7 +673,7 @@ export function transformBackupData(data: string): {
   // 如果用户选择了恢复消息
   if (indexedDb.topics && indexedDb.message_blocks) {
     logger.info('Processing topics and messages...')
-    const { systemAssistants, externalAssistants } = normalizeAssistantsFromBackup(reduxData.assistants)
+    const { systemAssistants, externalAssistants } = normalizeAssistantsFromBackup(reduxData.assistants, reduxData.llm)
     const topicsFromReduxMap = new Map<string, Topic>()
 
     for (const assistant of [...systemAssistants, ...externalAssistants]) {

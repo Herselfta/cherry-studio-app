@@ -838,7 +838,8 @@ export async function getDefaultAssistant(): Promise<Assistant> {
  * Get default model
  */
 export function getDefaultModel() {
-  return SYSTEM_MODELS.defaultModel[0]
+  const defaultAssistant = assistantService.getAssistantCached('default')
+  return defaultAssistant?.model ?? defaultAssistant?.defaultModel ?? SYSTEM_MODELS.defaultModel[0]
 }
 
 /**
@@ -884,7 +885,7 @@ export async function createAssistant(): Promise<Assistant> {
   const newAssistant: Assistant = {
     id: uuid(),
     emoji: '⭐',
-    name: i18n.t('settings.assistant.title'),
+    name: i18n.t('settings.assistant.new_name'),
     prompt: '',
     topics: [],
     type: 'external',

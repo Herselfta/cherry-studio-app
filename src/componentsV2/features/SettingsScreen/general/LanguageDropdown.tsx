@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pressable } from 'react-native'
 
@@ -11,15 +11,12 @@ import { storage } from '@/utils'
 
 export function LanguageDropdown() {
   const { i18n } = useTranslation()
-  const [currentLanguage, setCurrentLanguage] = useState<string>(
-    normalizeLanguageTag(storage.getString('language') || defaultLanguage)
-  )
+  const currentLanguage = normalizeLanguageTag(i18n.language || storage.getString('language') || defaultLanguage)
   const { resetBuiltInAssistants } = useBuiltInAssistants()
 
   const handleLanguageChange = async (langCode: string) => {
     storage.set('language', langCode)
     await i18n.changeLanguage(langCode)
-    setCurrentLanguage(langCode)
     resetBuiltInAssistants()
   }
 

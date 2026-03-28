@@ -4,9 +4,9 @@ import { View } from 'react-native'
 
 import { Text, XStack } from '@/componentsV2'
 import { ModelIcon } from '@/componentsV2/icons'
+import { normalizeLanguageTag } from '@/config/languages'
 import { useProvider } from '@/hooks/useProviders'
 import type { Message } from '@/types/message'
-import { storage } from '@/utils'
 import { getBaseModelName } from '@/utils/naming'
 
 interface MessageHeaderProps {
@@ -16,8 +16,8 @@ interface MessageHeaderProps {
 const MessageHeader: React.FC<MessageHeaderProps> = ({ message }) => {
   const providerId = message.model?.provider ?? ''
   const { provider } = useProvider(providerId)
-  const { t } = useTranslation()
-  const currentLanguage = storage.getString('language')
+  const { t, i18n } = useTranslation()
+  const currentLanguage = normalizeLanguageTag(i18n.language)
   const providerDisplayName = providerId
     ? t(`provider.${providerId}`, { defaultValue: provider?.name ?? providerId })
     : (provider?.name ?? providerId)

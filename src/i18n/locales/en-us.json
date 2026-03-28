@@ -267,7 +267,7 @@
       "text": "Text",
       "toolInput": "Tool Input",
       "toolName": "Tool Name",
-      "translate_assistant_model_not_defined": "Translate assistant model is not configured. Please go to Settings > Default Assistant to configure the translation assistant model",
+      "translate_assistant_model_not_defined": "Translate model is not configured. Please go to Settings > Default Model to configure it",
       "unknown": "Unknown error",
       "upload": {
         "failed": "Failed to upload file. Please try again."
@@ -572,21 +572,22 @@
       },
       "assistant": {
         "default_assistant": {
-          "description": "Assistant used when creating a new assistant, if the assistant is not set, this assistant will be used",
-          "name": "Default Assistant"
+          "description": "Model used when creating a new assistant. If the assistant does not specify a model, this model will be used",
+          "name": "Default Model"
         },
         "empty": "No Assistant yet...",
+        "new_name": "New Assistant",
         "quick_assistant": {
-          "description": "Assistant used for simple tasks such as topic naming and keyword extraction",
-          "name": "Quick Assistant"
+          "description": "Model used for simple tasks such as topic naming and keyword extraction",
+          "name": "Quick Model"
         },
         "show": {
           "icon": "Show model icon"
         },
-        "title": "Default Assistant",
+        "title": "Default Model",
         "translate_assistant": {
-          "description": "Assistant used for translation service",
-          "name": "Translation Assistant"
+          "description": "Model used for translation service",
+          "name": "Translate Model"
         }
       },
       "data": {

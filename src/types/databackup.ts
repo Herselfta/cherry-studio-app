@@ -1,7 +1,7 @@
 import type { WebSearchProvider, WebSearchState } from '@/types/websearch'
 
-import type { Assistant, Provider, Topic } from './assistant'
-import type { ThemeMode } from './index'
+import type { Assistant, Model, Provider, Topic } from './assistant'
+import type { LanguageVarious, ThemeMode } from './index'
 import type { MCPServer } from './mcp'
 import type { Message, MessageBlock } from './message'
 
@@ -46,11 +46,16 @@ export type ImportReduxData = {
   }
   llm: {
     providers: Provider[]
+    defaultModel?: Model
+    topicNamingModel?: Model
+    quickModel?: Model
+    translateModel?: Model
   }
   websearch: WebSearchState & { providers: WebSearchProvider[] }
   settings: {
     userName: string
     theme?: ThemeMode
+    language?: LanguageVarious
     webdavHost?: string
     webdavUser?: string
     webdavPass?: string

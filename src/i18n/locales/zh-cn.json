@@ -267,7 +267,7 @@
       "text": "文本",
       "toolInput": "工具输入",
       "toolName": "工具名称",
-      "translate_assistant_model_not_defined": "翻译助手模型未配置，请前往设置 > 默认助手中配置翻译助手的模型",
+      "translate_assistant_model_not_defined": "翻译助手模型未配置，请前往设置 > 默认模型中配置翻译模型",
       "unknown": "未知错误",
       "upload": {
         "failed": "文件上传失败，请重试"
@@ -572,21 +572,22 @@
       },
       "assistant": {
         "default_assistant": {
-          "description": "创建新助手时使用的助手，如果未设置助手，将使用此助手",
-          "name": "默认助手"
+          "description": "创建新助手时使用的模型，如果助手未设置模型，则使用此模型",
+          "name": "默认模型"
         },
         "empty": "还没有助手...",
+        "new_name": "新助手",
         "quick_assistant": {
-          "description": "用于简单任务的助手，例如话题命名和关键字提取",
-          "name": "快速助手"
+          "description": "用于简单任务的模型，例如话题命名和关键字提取",
+          "name": "快速模型"
         },
         "show": {
           "icon": "显示模型图标"
         },
-        "title": "默认助手",
+        "title": "默认模型",
         "translate_assistant": {
-          "description": "用于翻译服务的助手",
-          "name": "翻译助手"
+          "description": "用于翻译服务的模型",
+          "name": "翻译模型"
         }
       },
       "data": {

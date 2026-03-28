@@ -1,6 +1,6 @@
 import { useNavigation } from '@react-navigation/native'
 import type { FC } from 'react'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useRef, useState } from 'react'
 import ContentLoader, { Rect } from 'react-content-loader/native'
 import { useTranslation } from 'react-i18next'
 import { View } from 'react-native'
@@ -13,15 +13,14 @@ import { ExportOptionsContent } from '@/componentsV2/features/TopicItem/ExportOp
 import { RenameTopicContent } from '@/componentsV2/features/TopicItem/RenameTopicContent'
 import XStack from '@/componentsV2/layout/XStack'
 import YStack from '@/componentsV2/layout/YStack'
+import { normalizeLanguageTag } from '@/config/languages'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useExport } from '@/hooks/useExport'
 import { useTheme } from '@/hooks/useTheme'
 import { useToast } from '@/hooks/useToast'
-import i18n from '@/i18n'
 import { fetchTopicNaming } from '@/services/ApiService'
 import type { Topic } from '@/types/assistant'
 import type { HomeNavigationProps } from '@/types/naviagate'
-import { storage } from '@/utils'
 
 import { Check, CheckSquare, Download, Edit3, Sparkles, Trash2 } from '../../icons/LucideIcon'
 
@@ -74,8 +73,8 @@ export const TopicItem: FC<TopicItemProps> = ({
   onToggleSelect,
   onEnterMultiSelectMode
 }) => {
-  const { t } = useTranslation()
-  const [currentLanguage, setCurrentLanguage] = useState<string>(i18n.language)
+  const { t, i18n } = useTranslation()
+  const currentLanguage = normalizeLanguageTag(i18n.language)
   const navigation = useNavigation<HomeNavigationProps>()
   const { assistant } = useAssistant(topic.assistantId)
   const [isGeneratingName, setIsGeneratingName] = useState(false)
@@ -113,18 +112,6 @@ export const TopicItem: FC<TopicItemProps> = ({
           minute: '2-digit',
           hour12: true
         })
-
-  useEffect(() => {
-    const fetchCurrentLanguage = () => {
-      const storedLanguage = storage.getString('language')
-
-      if (storedLanguage) {
-        setCurrentLanguage(storedLanguage)
-      }
-    }
-
-    fetchCurrentLanguage()
-  }, [])
 
   const tempNameRef = useRef(topic.name)
   const exportOptionsRef = useRef({ includeReasoning: false })
