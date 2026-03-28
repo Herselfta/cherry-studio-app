@@ -1,6 +1,5 @@
 import { databaseMaintenance } from '@database'
 import { useNavigation } from '@react-navigation/native'
-import { reloadAppAsync } from 'expo'
 import * as DocumentPicker from 'expo-document-picker'
 import { File, Paths } from 'expo-file-system'
 import * as IntentLauncher from 'expo-intent-launcher'
@@ -26,6 +25,7 @@ import {
 } from '@/componentsV2'
 import { FileText, Folder, FolderOpen, RotateCcw, Save, Trash2 } from '@/componentsV2/icons/LucideIcon'
 import { DEFAULT_RESTORE_STEPS, useRestore } from '@/hooks/useRestore'
+import { reloadApplication } from '@/services/AppReloadService'
 import { backup } from '@/services/BackupService'
 import { getCacheDirectorySize, resetCacheDirectory, saveFileToFolder, saveTextAsFile } from '@/services/FileService'
 import { loggerService } from '@/services/LoggerService'
@@ -80,14 +80,18 @@ export default function BasicDataSettingsScreen() {
     closeModal()
     if (overallStatus === 'success') {
       // 恢复成功后重启应用，与重置数据行为一致
-      delay(async () => await reloadAppAsync(), 200)
+      delay(() => {
+        void reloadApplication()
+      }, 200)
     }
   }
 
   const handleMobileSyncClose = () => {
     closeMobileSyncModal()
     if (mobileSyncOverallStatus === 'success') {
-      delay(async () => await reloadAppAsync(), 200)
+      delay(() => {
+        void reloadApplication()
+      }, 200)
     }
   }
 
@@ -198,7 +202,9 @@ export default function BasicDataSettingsScreen() {
           await persistor.purge() // reset redux
           await resetCacheDirectory() // reset cache
 
-          delay(async () => await reloadAppAsync(), 200)
+          delay(() => {
+            void reloadApplication()
+          }, 200)
         } catch (error) {
           setIsResetting(false)
           presentDialog('error', {

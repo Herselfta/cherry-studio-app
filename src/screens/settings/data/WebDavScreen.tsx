@@ -1,7 +1,6 @@
 import type { RouteProp } from '@react-navigation/native'
 import { useRoute } from '@react-navigation/native'
 import type { Dispatch } from '@reduxjs/toolkit'
-import { reloadAppAsync } from 'expo'
 import { File } from 'expo-file-system'
 import { Button, Spinner } from 'heroui-native'
 import { delay } from 'lodash'
@@ -28,6 +27,7 @@ import SelectionSheet, { presentSelectionSheet } from '@/componentsV2/base/Selec
 import { Check, Cloud, Download, Eye, EyeOff, RefreshCw, ShieldCheck } from '@/componentsV2/icons/LucideIcon'
 import { LAN_RESTORE_STEPS, useRestore } from '@/hooks/useRestore'
 import type { DataSourcesStackParamList } from '@/navigators/settings/DataSourcesStackNavigator'
+import { reloadApplication } from '@/services/AppReloadService'
 import type { ProgressUpdate } from '@/services/BackupService'
 import { restore as restoreBackupFile } from '@/services/BackupService'
 import { loggerService } from '@/services/LoggerService'
@@ -185,7 +185,9 @@ export default function WebDavScreen() {
     closeModal()
 
     if (overallStatus === 'success') {
-      delay(async () => await reloadAppAsync(), 200)
+      delay(() => {
+        void reloadApplication()
+      }, 200)
     }
   }
 
@@ -193,7 +195,9 @@ export default function WebDavScreen() {
     closeMobileSyncModal()
 
     if (mobileSyncOverallStatus === 'success') {
-      delay(async () => await reloadAppAsync(), 200)
+      delay(() => {
+        void reloadApplication()
+      }, 200)
     }
   }
 

@@ -31,6 +31,8 @@ import { topicService } from '@/services/TopicService'
 import type { HomeNavigationProps } from '@/types/naviagate'
 import { isIOS } from '@/utils/device'
 
+import { resolveTopicScreenAssistantId } from './topicScreenUtils'
+
 const logger = loggerService.withContext('TopicScreen')
 
 const waitForDialogSpinner = () => new Promise(resolve => setTimeout(resolve, 50))
@@ -39,7 +41,7 @@ export default function TopicScreen() {
   const { t } = useTranslation()
   const navigation = useNavigation<HomeNavigationProps>()
   const route = useRoute<RouteProp<HomeStackParamList, 'TopicScreen'>>()
-  const assistantId = route.params?.assistantId
+  const routeAssistantId = route.params?.assistantId
   const { topics, isLoading } = useTopics()
   const { currentTopicId, switchTopic } = useCurrentTopic()
   const { createNewTopic } = useCreateNewTopic()
@@ -49,12 +51,22 @@ export default function TopicScreen() {
   const [isDeleting, setIsDeleting] = useState(false)
   const showSkeleton = useSkeletonLoading(isLoading)
 
+  const scopedAssistantId = useMemo(
+    () =>
+      resolveTopicScreenAssistantId({
+        routeAssistantId,
+        currentTopicId,
+        topics
+      }),
+    [currentTopicId, routeAssistantId, topics]
+  )
+
   const assistantTopics = useMemo(() => {
-    if (!assistantId) {
+    if (!scopedAssistantId) {
       return topics
     }
-    return topics.filter(topic => topic.assistantId === assistantId)
-  }, [assistantId, topics])
+    return topics.filter(topic => topic.assistantId === scopedAssistantId)
+  }, [scopedAssistantId, topics])
 
   const {
     searchText,
@@ -70,14 +82,14 @@ export default function TopicScreen() {
   const hasSelection = selectionCount > 0
 
   const getAssistantForNewTopic = useCallback(async () => {
-    if (assistantId) {
-      const assistant = await assistantService.getAssistant(assistantId)
+    if (scopedAssistantId) {
+      const assistant = await assistantService.getAssistant(scopedAssistantId)
       if (assistant) {
         return assistant
       }
     }
     return await getDefaultAssistant()
-  }, [assistantId])
+  }, [scopedAssistantId])
 
   const handleNavigateChatScreen = useCallback(
     (topicId: string) => {

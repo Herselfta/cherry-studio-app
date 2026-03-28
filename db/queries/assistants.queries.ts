@@ -102,13 +102,18 @@ export async function getExternalAssistants(): Promise<Assistant[]> {
  */
 export async function getAssistantById(id: string): Promise<Assistant | null> {
   try {
-    const result = await db.select().from(assistants).where(eq(assistants.id, id)).limit(1)
+    const result = await db.query.assistants.findFirst({
+      where: eq(assistants.id, id),
+      with: {
+        topics: true
+      }
+    })
 
-    if (result.length === 0) {
+    if (!result) {
       return null
     }
 
-    return transformDbToAssistant(result[0])
+    return transformDbToAssistant(result)
   } catch (error) {
     logger.error('Error getting assistant by ID:', error)
     throw error

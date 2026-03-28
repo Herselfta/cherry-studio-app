@@ -336,6 +336,7 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
         type: index === 0 ? 'system' : 'external'
       }) as Assistant
   )
+  let mutatedAssistantIds = allAssistants.map(assistant => assistant.id)
   const shouldUseSourceAwareImport = parsed.version >= 2 && Boolean(parsed.sourceDeviceId)
   const legacySourceKey = parsed.sourcePlatform || parsed.source
   const deviceLedgerEntry = shouldUseSourceAwareImport ? getMobileSyncLedgerEntry(parsed.sourceDeviceId!) : undefined
@@ -472,6 +473,7 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
         type: resolvePortableAssistantType(assistant, systemAssistantIds)
       }))
     ]
+    mutatedAssistantIds = resolvedAssistants.map(assistant => assistant.id)
     const incomingBlockIdSet = new Set(restoredMessageBlocks.map(block => block.id))
     const deletedBlockIdSet = new Set(resolvedConversation.deletedBlockIds)
     const candidateFileIds = new Set<string>([
@@ -510,7 +512,7 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
 
   await ensureValidCurrentTopic()
   topicService.invalidateCache()
-  assistantService.invalidateCache()
+  assistantService.syncAfterExternalMutation(mutatedAssistantIds)
 
   onProgress({ step: 'restore_messages', status: 'completed' })
 }
