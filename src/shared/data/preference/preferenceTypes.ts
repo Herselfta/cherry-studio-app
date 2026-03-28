@@ -1,4 +1,5 @@
 import type { ThemeMode } from '@/types'
+import type { Model } from '@/types/assistant'
 
 export type PreferenceDefaultScopeType = PreferenceSchemas['default']
 export type PreferenceKeyType = keyof PreferenceDefaultScopeType
@@ -20,6 +21,9 @@ export interface PreferenceSchemas {
 
     // UI Configuration
     'ui.theme_mode': ThemeMode
+
+    // Model Configuration
+    'llm.default_model': Model
 
     // Topic State
     'topic.current_id': string

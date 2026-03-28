@@ -38,6 +38,7 @@ import {
 } from '@/constants'
 import i18n from '@/i18n'
 import { loggerService } from '@/services/LoggerService'
+import { preferenceService } from '@/services/PreferenceService'
 import type { Assistant, AssistantSettings } from '@/types/assistant'
 import { uuid } from '@/utils'
 
@@ -838,8 +839,7 @@ export async function getDefaultAssistant(): Promise<Assistant> {
  * Get default model
  */
 export function getDefaultModel() {
-  const defaultAssistant = assistantService.getAssistantCached('default')
-  return defaultAssistant?.model ?? defaultAssistant?.defaultModel ?? SYSTEM_MODELS.defaultModel[0]
+  return preferenceService.getCached('llm.default_model') ?? SYSTEM_MODELS.defaultModel[0]
 }
 
 /**

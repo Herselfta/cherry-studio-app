@@ -110,4 +110,60 @@ describe('buildMobileSyncAssistantPayload', () => {
       })
     ])
   })
+
+  it('exports per-assistant runtime model fields in the mobile sync payload', () => {
+    const runtimeModel = {
+      id: 'external-runtime-model',
+      provider: 'openrouter',
+      name: 'External Runtime Model',
+      group: 'chat'
+    }
+    const assistantDefaultModel = {
+      id: 'external-default-model',
+      provider: 'anthropic',
+      name: 'External Default Model',
+      group: 'assistant-default'
+    }
+    const defaultAssistantModel = {
+      id: 'default-runtime-model',
+      provider: 'openai',
+      name: 'Default Runtime Model',
+      group: 'default'
+    }
+
+    const result = buildMobileSyncAssistantPayload({
+      assistants: [
+        createAssistant({
+          id: 'default',
+          name: 'Default',
+          type: 'system',
+          model: defaultAssistantModel,
+          defaultModel: defaultAssistantModel,
+          topics: []
+        }),
+        createAssistant({
+          id: 'external-1',
+          name: 'External One',
+          model: runtimeModel,
+          defaultModel: assistantDefaultModel,
+          topics: []
+        })
+      ],
+      fallbackAssistants: [createAssistant({ id: 'default', name: 'Seed Default', type: 'system' })],
+      topics: []
+    })
+
+    expect(result.defaultAssistant).toEqual(
+      expect.objectContaining({
+        model: defaultAssistantModel,
+        defaultModel: defaultAssistantModel
+      })
+    )
+    expect(result.assistants.find(assistant => assistant.id === 'external-1')).toEqual(
+      expect.objectContaining({
+        model: runtimeModel,
+        defaultModel: assistantDefaultModel
+      })
+    )
+  })
 })

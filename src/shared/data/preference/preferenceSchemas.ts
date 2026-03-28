@@ -4,15 +4,17 @@
  * This file defines all user preferences and their default values.
  * Preferences are stored in the SQLite database and can be synchronized across devices.
  *
- * Total preference items: 11
+ * Total preference items: 12
  * - User configuration: 3
  * - UI configuration: 1
+ * - Model configuration: 1
  * - Topic state: 1
  * - Web search configuration: 4
  * - Chat configuration: 1
  * - App state: 2
  */
 
+import { SYSTEM_MODELS } from '@/config/models/default'
 import { ThemeMode } from '@/types'
 
 import type { PreferenceSchemas } from './preferenceTypes'
@@ -40,6 +42,11 @@ export const DefaultPreferences: PreferenceSchemas = {
     // - dark: Dark theme
     // - system: Follow system theme preference
     'ui.theme_mode': ThemeMode.system,
+
+    // === Model Configuration ===
+    // Global default model used when creating a new assistant or when an
+    // assistant does not explicitly pin its own model.
+    'llm.default_model': SYSTEM_MODELS.defaultModel[0],
 
     // === Topic State ===
     // Currently active conversation topic ID
@@ -93,6 +100,7 @@ export const PreferenceDescriptions: Record<keyof PreferenceSchemas['default'], 
   'user.name': 'User display name',
   'user.id': 'Unique user identifier (UUID)',
   'ui.theme_mode': 'Application theme mode (light/dark/system)',
+  'llm.default_model': 'Global default model used when an assistant has no explicit model',
   'topic.current_id': 'Currently active conversation topic ID',
   'websearch.search_with_time': 'Add current date to search queries for recent results',
   'websearch.max_results': 'Maximum number of search results (1-20)',

@@ -267,7 +267,7 @@
       "text": "文本",
       "toolInput": "工具输入",
       "toolName": "工具名称",
-      "translate_assistant_model_not_defined": "翻译助手模型未配置，请前往设置 > 默认模型中配置翻译模型",
+      "translate_assistant_model_not_defined": "翻译模型未配置，请前往设置 > 默认模型中配置翻译模型",
       "unknown": "未知错误",
       "upload": {
         "failed": "文件上传失败，请重试"

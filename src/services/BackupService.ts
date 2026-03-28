@@ -66,6 +66,7 @@ function isSystemAssistantId(assistantId: string): assistantId is SystemAssistan
 type NormalizedBackupAssistants = {
   systemAssistants: Assistant[]
   externalAssistants: Assistant[]
+  globalDefaultModel?: Assistant['defaultModel']
   source: 'app-native' | 'desktop-migration'
 }
 
@@ -251,23 +252,31 @@ export function normalizeAssistantsFromBackup(
         (assistantsState.presets ?? []).filter(assistant => !isSystemAssistantId(assistant.id))
       : []
 
-  const desktopSystemAssistantModels: Partial<Record<SystemAssistantId, BackupLlmState['defaultModel']>> =
+  const desktopSystemAssistantModels: Partial<
+    Record<Exclude<SystemAssistantId, 'default'>, BackupLlmState['defaultModel']>
+  > =
     source === 'desktop-migration'
       ? {
           // Desktop keeps system assistant model selections in the llm slice
           // instead of persisting them on the assistant objects themselves.
-          // Bridge those fields during migration restore so default/quick/
-          // translate keep the user's actual selected models on mobile.
-          default: llmState?.defaultModel,
+          // Quick/translate do not have a separate global preference on mobile,
+          // so we bridge them onto the corresponding system assistants.
           quick: llmState?.quickModel ?? llmState?.topicNamingModel,
           translate: llmState?.translateModel
         }
       : {}
 
+  const persistedDefaultAssistant = persistedSystemAssistantMap.get('default')
+  const globalDefaultModel =
+    llmState?.defaultModel ??
+    persistedDefaultAssistant?.defaultModel ??
+    persistedDefaultAssistant?.model ??
+    seededSystemAssistantMap.get('default')?.defaultModel
+
   const systemAssistants = SYSTEM_ASSISTANT_IDS.map(assistantId => {
     const seededAssistant = seededSystemAssistantMap.get(assistantId)!
     const persistedAssistant = persistedSystemAssistantMap.get(assistantId)
-    const bridgedDesktopModel = desktopSystemAssistantModels[assistantId]
+    const bridgedDesktopModel = assistantId === 'default' ? undefined : desktopSystemAssistantModels[assistantId]
     const resolvedDefaultModel = bridgedDesktopModel ?? persistedAssistant?.defaultModel ?? seededAssistant.defaultModel
     const resolvedModel =
       bridgedDesktopModel ?? persistedAssistant?.model ?? resolvedDefaultModel ?? seededAssistant.model
@@ -301,6 +310,7 @@ export function normalizeAssistantsFromBackup(
   return {
     systemAssistants,
     externalAssistants,
+    globalDefaultModel,
     source
   }
 }
@@ -488,7 +498,10 @@ async function restoreReduxData(
   providerService.invalidateCache()
   await providerService.refreshAllProvidersCache()
 
-  const { systemAssistants, externalAssistants, source } = normalizeAssistantsFromBackup(data.assistants, data.llm)
+  const { systemAssistants, externalAssistants, globalDefaultModel, source } = normalizeAssistantsFromBackup(
+    data.assistants,
+    data.llm
+  )
   const assistants = [...systemAssistants, ...externalAssistants]
   const assistantsWithAvatarCount = assistants.filter(assistant => Boolean(assistant.avatar)).length
 
@@ -513,6 +526,14 @@ async function restoreReduxData(
 
   if (themeMode) {
     await preferenceService.set('ui.theme_mode', themeMode)
+  }
+
+  if (globalDefaultModel) {
+    // Desktop/app migration packs carry a global default model that is distinct
+    // from the default assistant's actively selected model. Keep that split on
+    // mobile so restoring migration data does not overwrite the default
+    // assistant's current runtime model.
+    await preferenceService.set('llm.default_model', globalDefaultModel)
   }
 
   if (webDavConfig) {
@@ -759,6 +780,7 @@ async function getAllData(): Promise<string> {
     const overrideSearchService = await preferenceService.get('websearch.override_search_service')
     const contentLimit = await preferenceService.get('websearch.content_limit')
     const appInitializationVersion = await preferenceService.get('app.initialization_version')
+    const globalDefaultModel = await preferenceService.get('llm.default_model')
     const themeMode = await preferenceService.get('ui.theme_mode')
     const webDavConfig = getStoredWebDavConfig()
     const currentLanguage = storage.getString('language')
@@ -805,7 +827,8 @@ async function getAllData(): Promise<string> {
     }
 
     const llmPayload = {
-      providers
+      providers,
+      defaultModel: globalDefaultModel
     }
 
     const websearchPayload = {

@@ -338,12 +338,18 @@ describe('BackupService.transformBackupData', () => {
     )
   })
 
-  it('bridges desktop llm system models into mobile default/quick/translate assistants', () => {
-    const desktopDefaultModel = {
+  it('keeps the default assistant runtime model separate from the global default model', () => {
+    const desktopGlobalDefaultModel = {
       id: 'desktop-default-model',
       provider: 'openai',
       name: 'Desktop Default Model',
       group: 'default'
+    }
+    const desktopDefaultAssistantModel = {
+      id: 'desktop-default-assistant-model',
+      provider: 'openrouter',
+      name: 'Desktop Default Assistant Runtime Model',
+      group: 'assistant'
     }
     const desktopQuickModel = {
       id: 'desktop-quick-model',
@@ -370,6 +376,8 @@ describe('BackupService.transformBackupData', () => {
           id: 'default',
           name: 'Desktop Default Assistant',
           emoji: '🤖',
+          model: desktopDefaultAssistantModel,
+          defaultModel: desktopDefaultAssistantModel,
           prompt: '',
           topics: [],
           type: 'assistant'
@@ -378,17 +386,18 @@ describe('BackupService.transformBackupData', () => {
       },
       {
         providers: [],
-        defaultModel: desktopDefaultModel,
+        defaultModel: desktopGlobalDefaultModel,
         quickModel: desktopQuickModel,
         translateModel: desktopTranslateModel,
         topicNamingModel: desktopTopicNamingModel
       }
     )
 
+    expect(normalized.globalDefaultModel).toEqual(desktopGlobalDefaultModel)
     expect(normalized.systemAssistants.find(assistant => assistant.id === 'default')).toEqual(
       expect.objectContaining({
-        defaultModel: desktopDefaultModel,
-        model: desktopDefaultModel
+        defaultModel: desktopDefaultAssistantModel,
+        model: desktopDefaultAssistantModel
       })
     )
     expect(normalized.systemAssistants.find(assistant => assistant.id === 'quick')).toEqual(

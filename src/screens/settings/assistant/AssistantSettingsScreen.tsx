@@ -9,17 +9,17 @@ import { Container, HeaderBar, IconButton, Image, SafeAreaContainer, Text, XStac
 import { presentModelSheet } from '@/componentsV2/features/Sheet/ModelSheet'
 import { ChevronDown, Languages, MessageSquareMore, Rocket, Settings2 } from '@/componentsV2/icons/LucideIcon'
 import { useAssistant } from '@/hooks/useAssistant'
+import { usePreference } from '@/hooks/usePreference'
 import { useProvider } from '@/hooks/useProviders'
 import { useTheme } from '@/hooks/useTheme'
 import type { AssistantSettingsStackParamList } from '@/navigators/settings/AssistantSettingsStackNavigator'
-import type { Assistant, Model } from '@/types/assistant'
+import type { Model } from '@/types/assistant'
 import { getModelOrProviderIcon } from '@/utils/icons'
 import { getBaseModelName } from '@/utils/naming'
 
-function ModelPicker({ assistant, onPress }: { assistant: Assistant; onPress: () => void }) {
+function ModelPicker({ model, onPress }: { model?: Model; onPress: () => void }) {
   const { t } = useTranslation()
   const { isDark } = useTheme()
-  const model = assistant?.defaultModel
   const providerId = model?.provider ?? ''
   const { provider } = useProvider(providerId)
   const providerDisplayName = providerId
@@ -64,8 +64,8 @@ interface AssistantSettingItemProps {
   assistantId: string
   titleKey: string
   descriptionKey: string
-  assistant: Assistant
-  updateAssistant: (assistant: Assistant) => Promise<void>
+  model?: Model
+  setModel: (model: Model) => Promise<void>
   icon?: React.ReactElement
 }
 
@@ -73,8 +73,8 @@ function AssistantSettingItem({
   assistantId,
   titleKey,
   descriptionKey,
-  assistant,
-  updateAssistant,
+  model,
+  setModel,
   icon
 }: AssistantSettingItemProps) {
   const { t } = useTranslation()
@@ -82,12 +82,12 @@ function AssistantSettingItem({
 
   const handleModelChange = async (models: Model[]) => {
     const newModel = models[0]
-    await updateAssistant({ ...assistant, model: newModel, defaultModel: newModel })
+    await setModel(newModel)
   }
 
   const handlePress = () => {
     presentModelSheet({
-      mentions: assistant.defaultModel ? [assistant.defaultModel] : [],
+      mentions: model ? [model] : [],
       setMentions: handleModelChange,
       multiple: false
     })
@@ -106,7 +106,7 @@ function AssistantSettingItem({
             onPress={() => navigation.navigate('AssistantDetailScreen', { assistantId })}
           />
         </XStack>
-        <ModelPicker assistant={assistant} onPress={handlePress} />
+        <ModelPicker model={model} onPress={handlePress} />
         <Text className="text-foreground-secondary px-2.5 opacity-70">{t(descriptionKey)}</Text>
       </YStack>
     </>
@@ -116,9 +116,10 @@ function AssistantSettingItem({
 export default function AssistantSettingsScreen() {
   const { t } = useTranslation()
 
-  const { assistant: defaultAssistant, updateAssistant: updateDefaultAssistant } = useAssistant('default')
+  const { assistant: defaultAssistant } = useAssistant('default')
   const { assistant: quickAssistant, updateAssistant: updateQuickAssistant } = useAssistant('quick')
   const { assistant: translateAssistant, updateAssistant: updateTranslateAssistant } = useAssistant('translate')
+  const [defaultModel, setDefaultModel] = usePreference('llm.default_model')
 
   const isLoading = !defaultAssistant || !quickAssistant || !translateAssistant
 
@@ -135,24 +136,28 @@ export default function AssistantSettingsScreen() {
       id: 'default',
       titleKey: 'settings.assistant.default_assistant.name',
       descriptionKey: 'settings.assistant.default_assistant.description',
-      assistant: defaultAssistant,
-      updateAssistant: updateDefaultAssistant,
+      model: defaultModel,
+      setModel: setDefaultModel,
       icon: <MessageSquareMore size={16} className="text-foreground-secondary" />
     },
     {
       id: 'quick',
       titleKey: 'settings.assistant.quick_assistant.name',
       descriptionKey: 'settings.assistant.quick_assistant.description',
-      assistant: quickAssistant,
-      updateAssistant: updateQuickAssistant,
+      model: quickAssistant.defaultModel,
+      setModel: async (model: Model) => {
+        await updateQuickAssistant({ ...quickAssistant, model, defaultModel: model })
+      },
       icon: <Rocket size={16} className="text-foreground-secondary" />
     },
     {
       id: 'translate',
       titleKey: 'settings.assistant.translate_assistant.name',
       descriptionKey: 'settings.assistant.translate_assistant.description',
-      assistant: translateAssistant,
-      updateAssistant: updateTranslateAssistant,
+      model: translateAssistant.defaultModel,
+      setModel: async (model: Model) => {
+        await updateTranslateAssistant({ ...translateAssistant, model, defaultModel: model })
+      },
       icon: <Languages size={16} className="text-foreground-secondary" />
     }
   ]
@@ -167,8 +172,8 @@ export default function AssistantSettingsScreen() {
             assistantId={item.id}
             titleKey={item.titleKey}
             descriptionKey={item.descriptionKey}
-            assistant={item.assistant}
-            updateAssistant={item.updateAssistant}
+            model={item.model}
+            setModel={item.setModel}
             icon={item.icon}
           />
         ))}
