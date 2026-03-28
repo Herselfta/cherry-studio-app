@@ -33,10 +33,32 @@ This note defines the intended boundary between the app restore path for desktop
 ## App/Desktop `mobile sync`
 
 - Purpose: merge shared data between devices.
-- Behavior: upsert shared entities without wiping the target device.
+- Schema:
+  - `v1` remains supported as a legacy non-destructive merge import.
+  - `v2` adds `sourceDeviceId` and `sourcePlatform`.
+  - `exportedAt` remains required and is used to detect stale imports from the same source device.
+- Behavior:
+  - Settings and assistant metadata still import via upsert/merge.
+  - Conversation entities (`topics/messages/messageBlocks`) use source-aware incremental sync in `v2`.
+  - The target device must not be treated as a full mirror of the source device.
 - Source of truth:
   - Top-level `topics/messages/messageBlocks` are the canonical conversation records.
   - `assistant.topics` is retained only as a compatibility/sidebar index and must be rebuilt from top-level topics during import.
+- Source-aware deletion:
+  - App keeps a hidden per-device ledger keyed by `sourceDeviceId`.
+  - The ledger stores the last imported `exportedAt` plus the topic/message/block ids last seen from that source device.
+  - During `v2` import, only ids that were previously seen from the same `sourceDeviceId` and are now absent may be deleted.
+  - Local-only conversations that were never seen from that source device must be preserved.
+- Conflict resolution:
+  - If the same entity id exists on both sides, compare `updatedAt` and fall back to `createdAt`.
+  - The newer entity wins.
+  - If timestamps are equal, the incoming payload wins.
+- Topic ownership:
+  - Topic ownership is determined by the final top-level `topics` table.
+  - `assistant.topics` exists only as a compatibility/sidebar index and must never override the top-level topic owner.
+- Old payload protection:
+  - If an incoming `v2` payload from the same `sourceDeviceId` has an `exportedAt` older than or equal to the last imported value, destructive deletion is skipped.
+  - The import degrades to a non-destructive merge and should log a warning.
 - Model behavior:
   - Sync per-assistant `model` and `defaultModel`.
   - Does not sync app-global or desktop-global default model state.
@@ -57,4 +79,6 @@ This note defines the intended boundary between the app restore path for desktop
 - Do not map desktop `llm.defaultModel` onto the default assistant's active `model`.
 - Do not drop `assistant.model` during `mobile sync` export/import.
 - Do not treat `assistant.topics` as the primary cross-device topic source.
+- Do not delete local conversations that have never been seen from the importing `sourceDeviceId`.
+- Do not perform destructive deletion when replaying an older payload from the same source device.
 - If assistant model semantics change, update both desktop and app tests together.

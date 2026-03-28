@@ -1,7 +1,8 @@
 import {
   buildMobileSyncAssistantPayload,
   collectPortableSyncImageAssets,
-  normalizeMobileSyncExportTopics
+  normalizeMobileSyncExportTopics,
+  resolveMobileConversationSync
 } from '@/services/mobileSyncUtils'
 import type { Assistant, Topic } from '@/types/assistant'
 import { FileTypes } from '@/types/file'
@@ -164,6 +165,124 @@ describe('buildMobileSyncAssistantPayload', () => {
         model: runtimeModel,
         defaultModel: assistantDefaultModel
       })
+    )
+  })
+
+  it('rebuilds assistant topics from the canonical topic table instead of merging stale cached entries', () => {
+    const result = buildMobileSyncAssistantPayload({
+      assistants: [
+        createAssistant({
+          id: 'default',
+          name: 'Default',
+          type: 'system',
+          topics: [createTopic({ id: 'stale-default-topic', assistantId: 'default' })]
+        }),
+        createAssistant({
+          id: 'external-1',
+          name: 'External One',
+          topics: [createTopic({ id: 'stale-external-topic', assistantId: 'external-1' })]
+        })
+      ],
+      fallbackAssistants: [createAssistant({ id: 'default', name: 'Seed Default', type: 'system' })],
+      topics: [
+        createTopic({ id: 'fresh-default-topic', assistantId: 'default' }),
+        createTopic({ id: 'fresh-external-topic', assistantId: 'external-1' })
+      ]
+    })
+
+    expect(result.defaultAssistant.topics.map(topic => topic.id)).toEqual(['fresh-default-topic'])
+    expect(result.assistants.find(assistant => assistant.id === 'external-1')?.topics.map(topic => topic.id)).toEqual([
+      'fresh-external-topic'
+    ])
+  })
+})
+
+describe('resolveMobileConversationSync', () => {
+  it('preserves local-only conversations while deleting entities previously seen from the same source device', () => {
+    const result = resolveMobileConversationSync({
+      currentTopics: [
+        createTopic({ id: 'local-topic', assistantId: 'default' }),
+        createTopic({ id: 'shared-topic', assistantId: 'default' }),
+        createTopic({ id: 'removed-topic', assistantId: 'default' })
+      ],
+      incomingTopics: [createTopic({ id: 'shared-topic', assistantId: 'default', updatedAt: 50 })],
+      currentMessages: [
+        createMessage({ id: 'local-message', assistantId: 'default', topicId: 'local-topic' }),
+        createMessage({ id: 'shared-message', assistantId: 'default', topicId: 'shared-topic' }),
+        createMessage({ id: 'removed-message', assistantId: 'default', topicId: 'removed-topic' })
+      ],
+      incomingMessages: [
+        createMessage({
+          id: 'shared-message',
+          assistantId: 'default',
+          topicId: 'shared-topic',
+          updatedAt: 60
+        })
+      ],
+      currentMessageBlocks: [
+        { ...createImageBlock(), id: 'local-block', messageId: 'local-message' },
+        { ...createImageBlock(), id: 'shared-block', messageId: 'shared-message' },
+        { ...createImageBlock(), id: 'removed-block', messageId: 'removed-message' }
+      ],
+      incomingMessageBlocks: [{ ...createImageBlock(), id: 'shared-block', messageId: 'shared-message' }],
+      exportedAt: 20,
+      previousLedgerEntry: {
+        lastImportedExportedAt: 10,
+        topicIds: ['shared-topic', 'removed-topic'],
+        messageIds: ['shared-message', 'removed-message'],
+        blockIds: ['shared-block', 'removed-block']
+      }
+    })
+
+    expect(result.deletedTopicIds).toEqual(['removed-topic'])
+    expect(result.deletedMessageIds).toEqual(['removed-message'])
+    expect(result.deletedBlockIds).toEqual(['removed-block'])
+    expect(result.topics.map(topic => topic.id)).toEqual(expect.arrayContaining(['local-topic', 'shared-topic']))
+    expect(result.topics.map(topic => topic.id)).not.toContain('removed-topic')
+    expect(result.messages.map(message => message.id)).toEqual(
+      expect.arrayContaining(['local-message', 'shared-message'])
+    )
+    expect(result.nextLedgerEntry).toEqual(
+      expect.objectContaining({
+        lastImportedExportedAt: 20,
+        topicIds: ['shared-topic'],
+        messageIds: ['shared-message'],
+        blockIds: ['shared-block']
+      })
+    )
+  })
+
+  it('downgrades stale imports to non-destructive merge mode', () => {
+    const result = resolveMobileConversationSync({
+      currentTopics: [
+        createTopic({ id: 'local-topic', assistantId: 'default' }),
+        createTopic({ id: 'previously-synced-topic', assistantId: 'default' })
+      ],
+      incomingTopics: [createTopic({ id: 'local-topic', assistantId: 'default' })],
+      currentMessages: [
+        createMessage({ id: 'local-message', assistantId: 'default', topicId: 'local-topic' }),
+        createMessage({ id: 'previously-synced-message', assistantId: 'default', topicId: 'previously-synced-topic' })
+      ],
+      incomingMessages: [createMessage({ id: 'local-message', assistantId: 'default', topicId: 'local-topic' })],
+      currentMessageBlocks: [
+        { ...createImageBlock(), id: 'previously-synced-block', messageId: 'previously-synced-message' }
+      ],
+      incomingMessageBlocks: [],
+      exportedAt: 5,
+      previousLedgerEntry: {
+        lastImportedExportedAt: 10,
+        topicIds: ['previously-synced-topic'],
+        messageIds: ['previously-synced-message'],
+        blockIds: ['previously-synced-block']
+      }
+    })
+
+    expect(result.isStaleImport).toBe(true)
+    expect(result.deletedTopicIds).toEqual([])
+    expect(result.deletedMessageIds).toEqual([])
+    expect(result.deletedBlockIds).toEqual([])
+    expect(result.topics.map(topic => topic.id)).toEqual(
+      expect.arrayContaining(['local-topic', 'previously-synced-topic'])
     )
   })
 })

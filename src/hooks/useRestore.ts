@@ -8,6 +8,7 @@ import type { RestoreStep } from '@/componentsV2/features/SettingsScreen/data/Re
 import { databaseMaintenance } from '@/database/DatabaseMaintenance'
 import { resetAppInitializationState, runAppDataMigrations } from '@/services/AppInitializationService'
 import { type ProgressUpdate, restore, type RestoreStepId, type StepStatus } from '@/services/BackupService'
+import { resetCacheDirectory } from '@/services/FileService'
 import { loggerService } from '@/services/LoggerService'
 import type { FileMetadata } from '@/types/file'
 import { uuid } from '@/utils'
@@ -173,6 +174,7 @@ export function useRestore(options: UseRestoreOptions = {}) {
           try {
             updateStepStatus('clear_data', 'in_progress')
             logger.info('Clearing existing data before restore...')
+            await resetCacheDirectory()
             await databaseMaintenance.resetDatabase()
             resetAppInitializationState()
             // 运行迁移以初始化系统数据（v1 seed）

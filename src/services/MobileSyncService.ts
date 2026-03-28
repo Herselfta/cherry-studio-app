@@ -12,17 +12,23 @@ import { getSystemAssistants } from '@/config/assistants'
 import { loggerService } from '@/services/LoggerService'
 import { preferenceService } from '@/services/PreferenceService'
 import type { Assistant, Provider, Topic } from '@/types/assistant'
-import type { Message, MessageBlock } from '@/types/message'
+import { type Message, type MessageBlock, MessageBlockType } from '@/types/message'
 import type { WebSearchProvider } from '@/types/websearch'
 
 import { assistantService } from './AssistantService'
-import { materializePortableImageBlocks, type ProgressUpdate } from './BackupService'
+import { cleanupOrphanedImportedFiles, materializePortableImageBlocks, type ProgressUpdate } from './BackupService'
 import { readBase64File } from './FileService'
+import {
+  getMobileSyncLedgerEntry,
+  getOrCreateMobileSyncSourceDeviceId,
+  writeMobileSyncLedgerEntry
+} from './mobileSyncLedger'
 import {
   buildMobileSyncAssistantPayload,
   collectPortableSyncImageAssets,
   normalizeMobileSyncExportTopics,
-  type PortableSyncImageAsset
+  type PortableSyncImageAsset,
+  resolveMobileConversationSync
 } from './mobileSyncUtils'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
@@ -30,7 +36,7 @@ import { topicService } from './TopicService'
 const logger = loggerService.withContext('MobileSyncService')
 
 export const MOBILE_SYNC_SCHEMA = 'cherry-studio-cross-device-sync'
-export const MOBILE_SYNC_SCHEMA_VERSION = 1
+export const MOBILE_SYNC_SCHEMA_VERSION = 2
 export const MOBILE_SYNC_FILE_MARKER = '.mobile-sync.'
 
 type SyncSettings = {
@@ -77,6 +83,8 @@ type MobileSyncPayload = {
   schema: typeof MOBILE_SYNC_SCHEMA
   version: number
   source: 'desktop' | 'mobile'
+  sourceDeviceId?: string
+  sourcePlatform?: 'desktop' | 'mobile'
   exportedAt: number
   data: SyncData
 }
@@ -143,6 +151,14 @@ function toMobileMessageBlock(block: SyncMessageBlock): MessageBlock {
     createdAt: toTimestamp(block.createdAt),
     updatedAt: block.updatedAt ? toTimestamp(block.updatedAt) : undefined
   } as MessageBlock
+}
+
+function getBlockFileId(block: MessageBlock) {
+  if (block.type !== MessageBlockType.IMAGE && block.type !== MessageBlockType.FILE) {
+    return undefined
+  }
+
+  return block.file?.id
 }
 
 function toSyncTopic(topic: Topic): SyncTopic {
@@ -212,6 +228,7 @@ export async function exportMobileSyncPayload(): Promise<string> {
   const avatar = await preferenceService.get('user.avatar')
   const searchWithTime = await preferenceService.get('websearch.search_with_time')
   const maxResults = await preferenceService.get('websearch.max_results')
+  const sourceDeviceId = getOrCreateMobileSyncSourceDeviceId()
   const mobileSyncAssistants = defaultAssistant ? [defaultAssistant, ...externalAssistants] : externalAssistants
   const normalizedTopics = normalizeMobileSyncExportTopics({
     assistants: mobileSyncAssistants,
@@ -234,6 +251,8 @@ export async function exportMobileSyncPayload(): Promise<string> {
     schema: MOBILE_SYNC_SCHEMA,
     version: MOBILE_SYNC_SCHEMA_VERSION,
     source: 'mobile',
+    sourceDeviceId,
+    sourcePlatform: 'mobile',
     exportedAt: Date.now(),
     data: {
       assistants: {
@@ -313,10 +332,61 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     parsed.data.messageBlocks.map(toMobileMessageBlock),
     parsed.data.portableImageAssets || []
   )
+  const shouldUseSourceAwareImport = parsed.version >= 2 && Boolean(parsed.sourceDeviceId)
 
-  await topicDatabase.upsertTopics(parsed.data.topics.map(toMobileTopic))
-  await messageDatabase.upsertMessages(parsed.data.messages.map(toMobileMessage))
-  await messageBlockDatabase.upsertBlocks(restoredMessageBlocks)
+  if (!shouldUseSourceAwareImport) {
+    await topicDatabase.upsertTopics(parsed.data.topics.map(toMobileTopic))
+    await messageDatabase.upsertMessages(parsed.data.messages.map(toMobileMessage))
+    await messageBlockDatabase.upsertBlocks(restoredMessageBlocks)
+  } else {
+    const [currentTopics, currentMessages, currentMessageBlocks] = await Promise.all([
+      topicDatabase.getTopics(),
+      messageDatabase.getAllMessages(),
+      messageBlockDatabase.getAllBlocks()
+    ])
+    const resolvedConversation = resolveMobileConversationSync({
+      currentTopics,
+      incomingTopics: parsed.data.topics.map(toMobileTopic),
+      currentMessages,
+      incomingMessages: parsed.data.messages.map(toMobileMessage),
+      currentMessageBlocks,
+      incomingMessageBlocks: restoredMessageBlocks,
+      exportedAt: parsed.exportedAt,
+      previousLedgerEntry: getMobileSyncLedgerEntry(parsed.sourceDeviceId!)
+    })
+    const incomingBlockIdSet = new Set(restoredMessageBlocks.map(block => block.id))
+    const deletedBlockIdSet = new Set(resolvedConversation.deletedBlockIds)
+    const candidateFileIds = new Set<string>([
+      ...currentMessageBlocks
+        .map(block => ({ id: block.id, fileId: getBlockFileId(block) }))
+        .filter(block => block.fileId && (deletedBlockIdSet.has(block.id) || incomingBlockIdSet.has(block.id)))
+        .map(block => block.fileId!),
+      ...restoredMessageBlocks.map(getBlockFileId).filter((fileId): fileId is string => Boolean(fileId))
+    ])
+
+    for (const topicId of resolvedConversation.deletedTopicIds) {
+      await topicDatabase.deleteTopicById(topicId)
+    }
+    for (const messageId of resolvedConversation.deletedMessageIds) {
+      await messageDatabase.deleteMessageById(messageId)
+    }
+    if (resolvedConversation.deletedBlockIds.length > 0) {
+      await messageBlockDatabase.removeManyBlocks(resolvedConversation.deletedBlockIds)
+    }
+
+    await topicDatabase.upsertTopics(resolvedConversation.topics)
+    await messageDatabase.upsertMessages(resolvedConversation.messages)
+    await messageBlockDatabase.upsertBlocks(resolvedConversation.messageBlocks)
+    await cleanupOrphanedImportedFiles(candidateFileIds, resolvedConversation.messageBlocks)
+
+    if (!resolvedConversation.isStaleImport && resolvedConversation.nextLedgerEntry) {
+      writeMobileSyncLedgerEntry(parsed.sourceDeviceId!, resolvedConversation.nextLedgerEntry)
+    } else if (resolvedConversation.isStaleImport) {
+      logger.warn(
+        `Skipping destructive mobile sync actions for stale payload from ${parsed.sourceDeviceId} exported at ${parsed.exportedAt}`
+      )
+    }
+  }
 
   topicService.invalidateCache()
   assistantService.invalidateCache()

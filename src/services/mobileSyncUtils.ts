@@ -1,6 +1,8 @@
 import type { Assistant, Topic } from '@/types/assistant'
-import { FileTypes, type FileMetadata } from '@/types/file'
-import { MessageBlockType, type Message, type MessageBlock } from '@/types/message'
+import { type FileMetadata,FileTypes } from '@/types/file'
+import { type Message, type MessageBlock,MessageBlockType } from '@/types/message'
+
+import type { MobileSyncLedgerEntry } from './mobileSyncLedger'
 
 type BuildMobileSyncAssistantPayloadParams = {
   assistants: Assistant[]
@@ -17,6 +19,28 @@ type NormalizeMobileSyncExportTopicsParams = {
   assistants: Assistant[]
   messages: Message[]
   topics: Topic[]
+}
+
+type ResolveMobileConversationSyncParams = {
+  currentTopics: Topic[]
+  incomingTopics: Topic[]
+  currentMessages: Message[]
+  incomingMessages: Message[]
+  currentMessageBlocks: MessageBlock[]
+  incomingMessageBlocks: MessageBlock[]
+  exportedAt: number
+  previousLedgerEntry?: MobileSyncLedgerEntry
+}
+
+type ResolveMobileConversationSyncResult = {
+  topics: Topic[]
+  messages: Message[]
+  messageBlocks: MessageBlock[]
+  deletedTopicIds: string[]
+  deletedMessageIds: string[]
+  deletedBlockIds: string[]
+  isStaleImport: boolean
+  nextLedgerEntry?: MobileSyncLedgerEntry
 }
 
 export type PortableSyncImageAsset = {
@@ -41,6 +65,18 @@ function groupTopicsByAssistantId(topics: Topic[]) {
     result.set(topic.assistantId, mergeById(existing, [topic]))
     return result
   }, new Map())
+}
+
+function getEntityTimestamp(entity: { createdAt: number; updatedAt?: number }) {
+  return entity.updatedAt ?? entity.createdAt
+}
+
+function pickNewerEntity<T extends { createdAt: number; updatedAt?: number }>(current: T | undefined, incoming: T): T {
+  if (!current) {
+    return incoming
+  }
+
+  return getEntityTimestamp(incoming) >= getEntityTimestamp(current) ? incoming : current
 }
 
 function groupMessagesByTopicId(messages: Message[]) {
@@ -201,7 +237,7 @@ export function buildMobileSyncAssistantPayload({
 
   const defaultAssistant: Assistant = {
     ...defaultAssistantBase,
-    topics: mergeById(defaultAssistantBase.topics || [], topicsByAssistantId.get('default') || [])
+    topics: topicsByAssistantId.get('default') || []
   }
 
   allAssistantIds.delete('default')
@@ -211,12 +247,105 @@ export function buildMobileSyncAssistantPayload({
 
     return {
       ...baseAssistant,
-      topics: mergeById(baseAssistant.topics || [], topicsByAssistantId.get(assistantId) || [])
+      topics: topicsByAssistantId.get(assistantId) || []
     } satisfies Assistant
   })
 
   return {
     defaultAssistant,
     assistants: normalizedAssistants
+  }
+}
+
+export function resolveMobileConversationSync({
+  currentTopics,
+  incomingTopics,
+  currentMessages,
+  incomingMessages,
+  currentMessageBlocks,
+  incomingMessageBlocks,
+  exportedAt,
+  previousLedgerEntry
+}: ResolveMobileConversationSyncParams): ResolveMobileConversationSyncResult {
+  const incomingTopicIds = new Set(incomingTopics.map(topic => topic.id))
+  const incomingMessageIds = new Set(incomingMessages.map(message => message.id))
+  const incomingBlockIds = new Set(incomingMessageBlocks.map(block => block.id))
+  const isStaleImport = Boolean(previousLedgerEntry && exportedAt <= previousLedgerEntry.lastImportedExportedAt)
+
+  const deletedTopicIds = isStaleImport
+    ? []
+    : (previousLedgerEntry?.topicIds || []).filter(topicId => !incomingTopicIds.has(topicId))
+  const deletedTopicIdSet = new Set(deletedTopicIds)
+
+  const directDeletedMessageIds = isStaleImport
+    ? []
+    : (previousLedgerEntry?.messageIds || []).filter(messageId => !incomingMessageIds.has(messageId))
+  const topicCascadeMessageIds = currentMessages
+    .filter(message => deletedTopicIdSet.has(message.topicId))
+    .map(message => message.id)
+  const deletedMessageIds = Array.from(new Set([...directDeletedMessageIds, ...topicCascadeMessageIds]))
+  const deletedMessageIdSet = new Set(deletedMessageIds)
+
+  const topicMap = new Map<string, Topic>()
+  for (const topic of currentTopics) {
+    if (!deletedTopicIdSet.has(topic.id)) {
+      topicMap.set(topic.id, topic)
+    }
+  }
+  for (const topic of incomingTopics) {
+    topicMap.set(topic.id, pickNewerEntity(topicMap.get(topic.id), topic))
+  }
+
+  const finalTopicIds = new Set(topicMap.keys())
+  const messageMap = new Map<string, Message>()
+  for (const message of currentMessages) {
+    if (!deletedMessageIdSet.has(message.id) && finalTopicIds.has(message.topicId)) {
+      messageMap.set(message.id, message)
+    }
+  }
+  for (const message of incomingMessages) {
+    if (finalTopicIds.has(message.topicId)) {
+      messageMap.set(message.id, pickNewerEntity(messageMap.get(message.id), message))
+    }
+  }
+
+  const finalMessageIds = new Set(messageMap.keys())
+  const directDeletedBlockIds = isStaleImport
+    ? []
+    : (previousLedgerEntry?.blockIds || []).filter(blockId => !incomingBlockIds.has(blockId))
+  const messageCascadeBlockIds = currentMessageBlocks
+    .filter(block => deletedMessageIdSet.has(block.messageId) || !finalMessageIds.has(block.messageId))
+    .map(block => block.id)
+  const deletedBlockIds = Array.from(new Set([...directDeletedBlockIds, ...messageCascadeBlockIds]))
+  const deletedBlockIdSet = new Set(deletedBlockIds)
+
+  const blockMap = new Map<string, MessageBlock>()
+  for (const block of currentMessageBlocks) {
+    if (!deletedBlockIdSet.has(block.id) && finalMessageIds.has(block.messageId)) {
+      blockMap.set(block.id, block)
+    }
+  }
+  for (const block of incomingMessageBlocks) {
+    if (finalMessageIds.has(block.messageId)) {
+      blockMap.set(block.id, pickNewerEntity(blockMap.get(block.id), block))
+    }
+  }
+
+  return {
+    topics: Array.from(topicMap.values()),
+    messages: Array.from(messageMap.values()),
+    messageBlocks: Array.from(blockMap.values()),
+    deletedTopicIds,
+    deletedMessageIds,
+    deletedBlockIds,
+    isStaleImport,
+    nextLedgerEntry: isStaleImport
+      ? previousLedgerEntry
+      : {
+          lastImportedExportedAt: exportedAt,
+          topicIds: Array.from(incomingTopicIds),
+          messageIds: Array.from(incomingMessageIds),
+          blockIds: Array.from(incomingBlockIds)
+        }
   }
 }

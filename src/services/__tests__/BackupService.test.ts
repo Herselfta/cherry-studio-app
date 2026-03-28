@@ -1,7 +1,8 @@
 jest.mock('@database', () => ({
   assistantDatabase: {},
   fileDatabase: {
-    upsertFiles: jest.fn()
+    upsertFiles: jest.fn(),
+    getFileById: jest.fn()
   },
   mcpDatabase: {},
   messageBlockDatabase: {},
@@ -53,6 +54,7 @@ jest.mock('@/services/AssistantService', () => ({
 }))
 
 jest.mock('@/services/FileService', () => ({
+  deleteFiles: jest.fn(),
   writeBase64File: jest.fn()
 }))
 
@@ -69,13 +71,14 @@ jest.mock('@/services/TopicService', () => ({
 }))
 
 const {
+  cleanupOrphanedImportedFiles,
   getThemeModeFromBackupSettings,
   materializePortableImageBlocks,
   normalizeAssistantsFromBackup,
   transformBackupData
 } = require('@/services/BackupService')
 const { fileDatabase } = require('@database')
-const { writeBase64File } = require('@/services/FileService')
+const { deleteFiles, writeBase64File } = require('@/services/FileService')
 
 describe('BackupService.transformBackupData', () => {
   it('reads WebDAV config and theme from desktop backup settings', () => {
@@ -621,6 +624,65 @@ describe('BackupService.materializePortableImageBlocks', () => {
         })
       })
     ])
+  })
+})
+
+describe('BackupService.cleanupOrphanedImportedFiles', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('deletes imported files that are no longer referenced by any restored message block', async () => {
+    fileDatabase.getFileById.mockImplementation(async (fileId: string) => {
+      if (fileId === 'orphan-file') {
+        return {
+          id: 'orphan-file',
+          name: 'orphan',
+          origin_name: 'orphan.png',
+          path: 'file:///data/user/0/app/files/Images/orphan-file.png',
+          size: 1,
+          ext: '.png',
+          type: 'image',
+          created_at: 1,
+          count: 1
+        }
+      }
+
+      if (fileId === 'active-file') {
+        return {
+          id: 'active-file',
+          name: 'active',
+          origin_name: 'active.png',
+          path: 'file:///data/user/0/app/files/Images/active-file.png',
+          size: 1,
+          ext: '.png',
+          type: 'image',
+          created_at: 1,
+          count: 1
+        }
+      }
+
+      return null
+    })
+
+    const deletedFileIds = await cleanupOrphanedImportedFiles(
+      ['orphan-file', 'active-file', 'missing-file'],
+      [
+        {
+          id: 'block-1',
+          file: {
+            id: 'active-file'
+          }
+        }
+      ]
+    )
+
+    expect(deleteFiles).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'orphan-file'
+      })
+    ])
+    expect(deletedFileIds).toEqual(['orphan-file'])
   })
 })
 

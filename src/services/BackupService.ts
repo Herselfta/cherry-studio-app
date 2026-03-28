@@ -36,7 +36,7 @@ import { storage } from '@/utils'
 
 import { resetAppInitializationState, runAppDataMigrations } from './AppInitializationService'
 import { assistantService } from './AssistantService'
-import { writeBase64File } from './FileService'
+import { deleteFiles, writeBase64File } from './FileService'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
 import {
@@ -178,6 +178,44 @@ export async function materializePortableImageBlocks(
   }
 
   return restoredBlocks
+}
+
+function getReferencedBlockFileId(block: unknown) {
+  if (!block || typeof block !== 'object' || !('file' in block)) {
+    return undefined
+  }
+
+  const file = (block as { file?: { id?: unknown } }).file
+  return typeof file?.id === 'string' ? file.id : undefined
+}
+
+function collectReferencedBlockFileIds(messageBlocks: readonly unknown[]) {
+  return new Set(messageBlocks.map(getReferencedBlockFileId).filter((fileId): fileId is string => Boolean(fileId)))
+}
+
+export async function cleanupOrphanedImportedFiles(
+  candidateFileIds: Iterable<string>,
+  activeMessageBlocks: readonly unknown[]
+) {
+  const activeFileIds = collectReferencedBlockFileIds(activeMessageBlocks)
+  const orphanFileIds = Array.from(new Set(candidateFileIds)).filter(fileId => !activeFileIds.has(fileId))
+
+  if (orphanFileIds.length === 0) {
+    return []
+  }
+
+  const orphanFiles = (await Promise.all(orphanFileIds.map(fileId => fileDatabase.getFileById(fileId)))).filter(
+    (file): file is FileMetadata => Boolean(file)
+  )
+
+  if (orphanFiles.length === 0) {
+    return []
+  }
+
+  await deleteFiles(orphanFiles)
+  logger.info(`Deleted ${orphanFiles.length} orphaned imported file(s) after sync reconciliation`)
+
+  return orphanFiles.map(file => file.id)
 }
 
 function isDesktopMigrationAssistantsState(assistantsState: ImportReduxData['assistants']) {
