@@ -27,6 +27,7 @@ import {
   buildMobileSyncAssistantPayload,
   collectPortableSyncImageAssets,
   normalizeMobileSyncExportTopics,
+  normalizePortableConversationMessages,
   type PortableSyncImageAsset,
   resolveMobileConversationSync
 } from './mobileSyncUtils'
@@ -90,6 +91,14 @@ type MobileSyncPayload = {
 }
 
 type OnProgressCallback = (update: ProgressUpdate) => void
+
+function resolvePortableAssistantType(assistant: Assistant, systemAssistantIds: Set<string>): Assistant['type'] {
+  if (assistant.type === 'built_in') {
+    return 'built_in'
+  }
+
+  return systemAssistantIds.has(assistant.id) ? 'system' : 'external'
+}
 
 export function buildPortableSyncSettings(settings: { userName?: string }, avatar?: string | null): SyncSettings {
   return {
@@ -236,7 +245,9 @@ export async function exportMobileSyncPayload(): Promise<string> {
     topics
   })
   const normalizedTopicIds = new Set(normalizedTopics.map(topic => topic.id))
-  const normalizedMessages = messages.filter(message => normalizedTopicIds.has(message.topicId))
+  const normalizedMessages = normalizePortableConversationMessages(
+    messages.filter(message => normalizedTopicIds.has(message.topicId))
+  )
   const normalizedMessageIds = new Set(normalizedMessages.map(message => message.id))
   const normalizedMessageBlocks = messageBlocks.filter(block => normalizedMessageIds.has(block.messageId))
   const portableImageAssets = collectPortableSyncImageAssets(normalizedMessageBlocks, readBase64File)
@@ -307,7 +318,17 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
         type: index === 0 ? 'system' : 'external'
       }) as Assistant
   )
-  await assistantDatabase.upsertAssistants(allAssistants)
+  const shouldUseSourceAwareImport = parsed.version >= 2 && Boolean(parsed.sourceDeviceId)
+  const previousLedgerEntry = shouldUseSourceAwareImport ? getMobileSyncLedgerEntry(parsed.sourceDeviceId!) : undefined
+
+  logger.info('Importing mobile sync payload', {
+    version: parsed.version,
+    source: parsed.source,
+    sourcePlatform: parsed.sourcePlatform,
+    sourceDeviceId: parsed.sourceDeviceId,
+    sourceAware: shouldUseSourceAwareImport,
+    hasPreviousLedgerEntry: Boolean(previousLedgerEntry)
+  })
 
   if (parsed.data.settings.userName) {
     await preferenceService.set('user.name', parsed.data.settings.userName)
@@ -332,17 +353,18 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     parsed.data.messageBlocks.map(toMobileMessageBlock),
     parsed.data.portableImageAssets || []
   )
-  const shouldUseSourceAwareImport = parsed.version >= 2 && Boolean(parsed.sourceDeviceId)
 
   if (!shouldUseSourceAwareImport) {
+    await assistantDatabase.upsertAssistants(allAssistants)
     await topicDatabase.upsertTopics(parsed.data.topics.map(toMobileTopic))
     await messageDatabase.upsertMessages(parsed.data.messages.map(toMobileMessage))
     await messageBlockDatabase.upsertBlocks(restoredMessageBlocks)
   } else {
-    const [currentTopics, currentMessages, currentMessageBlocks] = await Promise.all([
+    const [currentTopics, currentMessages, currentMessageBlocks, currentAssistants] = await Promise.all([
       topicDatabase.getTopics(),
       messageDatabase.getAllMessages(),
-      messageBlockDatabase.getAllBlocks()
+      messageBlockDatabase.getAllBlocks(),
+      assistantDatabase.getAllAssistants()
     ])
     const resolvedConversation = resolveMobileConversationSync({
       currentTopics,
@@ -352,8 +374,24 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       currentMessageBlocks,
       incomingMessageBlocks: restoredMessageBlocks,
       exportedAt: parsed.exportedAt,
-      previousLedgerEntry: getMobileSyncLedgerEntry(parsed.sourceDeviceId!)
+      previousLedgerEntry
     })
+    const systemAssistantIds = new Set(getSystemAssistants().map(assistant => assistant.id))
+    const resolvedAssistantPayload = buildMobileSyncAssistantPayload({
+      assistants: [...currentAssistants, ...allAssistants],
+      fallbackAssistants: [...currentAssistants, ...getSystemAssistants()],
+      topics: resolvedConversation.topics
+    })
+    const resolvedAssistants: Assistant[] = [
+      {
+        ...resolvedAssistantPayload.defaultAssistant,
+        type: 'system'
+      },
+      ...resolvedAssistantPayload.assistants.map(assistant => ({
+        ...assistant,
+        type: resolvePortableAssistantType(assistant, systemAssistantIds)
+      }))
+    ]
     const incomingBlockIdSet = new Set(restoredMessageBlocks.map(block => block.id))
     const deletedBlockIdSet = new Set(resolvedConversation.deletedBlockIds)
     const candidateFileIds = new Set<string>([
@@ -364,6 +402,7 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       ...restoredMessageBlocks.map(getBlockFileId).filter((fileId): fileId is string => Boolean(fileId))
     ])
 
+    await assistantDatabase.upsertAssistants(resolvedAssistants)
     for (const topicId of resolvedConversation.deletedTopicIds) {
       await topicDatabase.deleteTopicById(topicId)
     }

@@ -2,6 +2,7 @@ import {
   buildMobileSyncAssistantPayload,
   collectPortableSyncImageAssets,
   normalizeMobileSyncExportTopics,
+  normalizePortableConversationMessages,
   resolveMobileConversationSync
 } from '@/services/mobileSyncUtils'
 import type { Assistant, Topic } from '@/types/assistant'
@@ -198,6 +199,66 @@ describe('buildMobileSyncAssistantPayload', () => {
 })
 
 describe('resolveMobileConversationSync', () => {
+  it('collapses fold-selected assistant alternatives into a single portable snapshot response', () => {
+    const userMessage = createMessage({
+      id: 'user-message',
+      assistantId: 'default',
+      topicId: 'topic-1',
+      role: 'user',
+      createdAt: 10
+    })
+    const oldAssistantMessage = createMessage({
+      id: 'assistant-old',
+      assistantId: 'default',
+      topicId: 'topic-1',
+      askId: 'user-message',
+      createdAt: 20,
+      foldSelected: false
+    })
+    const selectedAssistantMessage = createMessage({
+      id: 'assistant-selected',
+      assistantId: 'default',
+      topicId: 'topic-1',
+      askId: 'user-message',
+      createdAt: 30,
+      foldSelected: true
+    })
+
+    expect(
+      normalizePortableConversationMessages([userMessage, oldAssistantMessage, selectedAssistantMessage]).map(
+        message => message.id
+      )
+    ).toEqual(['user-message', 'assistant-selected'])
+  })
+
+  it('keeps multi-model assistant responses when no fold selection state exists', () => {
+    const userMessage = createMessage({
+      id: 'user-message',
+      assistantId: 'default',
+      topicId: 'topic-1',
+      role: 'user',
+      createdAt: 10
+    })
+    const assistantA = createMessage({
+      id: 'assistant-a',
+      assistantId: 'default',
+      topicId: 'topic-1',
+      askId: 'user-message',
+      createdAt: 20
+    })
+    const assistantB = createMessage({
+      id: 'assistant-b',
+      assistantId: 'default',
+      topicId: 'topic-1',
+      askId: 'user-message',
+      createdAt: 30
+    })
+
+    expect(
+      normalizePortableConversationMessages([userMessage, assistantA, assistantB]).map(message => message.id)
+    ).toEqual(['user-message', 'assistant-a', 'assistant-b'])
+  })
+
   it('preserves local-only conversations while deleting entities previously seen from the same source device', () => {
     const result = resolveMobileConversationSync({
       currentTopics: [

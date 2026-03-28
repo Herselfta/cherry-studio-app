@@ -1,6 +1,6 @@
 import type { Assistant, Topic } from '@/types/assistant'
-import { type FileMetadata,FileTypes } from '@/types/file'
-import { type Message, type MessageBlock,MessageBlockType } from '@/types/message'
+import { type FileMetadata, FileTypes } from '@/types/file'
+import { type Message, type MessageBlock, MessageBlockType } from '@/types/message'
 
 import type { MobileSyncLedgerEntry } from './mobileSyncLedger'
 
@@ -85,6 +85,27 @@ function groupMessagesByTopicId(messages: Message[]) {
     result.set(message.topicId, [...existing, message])
     return result
   }, new Map())
+}
+
+function getPortableConversationGroupKey(message: Message) {
+  return message.role === 'assistant' && message.askId ? `assistant:${message.askId}` : `message:${message.id}`
+}
+
+function selectPortableAssistantMessages(messages: Message[]) {
+  if (messages.length <= 1) {
+    return messages
+  }
+
+  const hasFoldSelectionState = messages.some(message => typeof message.foldSelected === 'boolean')
+  if (!hasFoldSelectionState) {
+    return messages
+  }
+
+  const selectedMessage =
+    messages.find(message => message.foldSelected) ||
+    [...messages].sort((left, right) => getEntityTimestamp(right) - getEntityTimestamp(left))[0]
+
+  return selectedMessage ? [selectedMessage] : messages
 }
 
 function resolveVisibleAssistantId(
@@ -215,6 +236,27 @@ export function normalizeMobileSyncExportTopics({
   }
 
   return Array.from(normalizedTopics.values())
+}
+
+export function normalizePortableConversationMessages(messages: Message[]): Message[] {
+  const groupedMessages = new Map<string, Message[]>()
+  const groupOrder: string[] = []
+  const sortedMessages = [...messages].sort((left, right) => getEntityTimestamp(left) - getEntityTimestamp(right))
+
+  for (const message of sortedMessages) {
+    const groupKey = getPortableConversationGroupKey(message)
+    if (!groupedMessages.has(groupKey)) {
+      groupedMessages.set(groupKey, [])
+      groupOrder.push(groupKey)
+    }
+
+    groupedMessages.get(groupKey)!.push(message)
+  }
+
+  return groupOrder.flatMap(groupKey => {
+    const groupMessages = groupedMessages.get(groupKey) || []
+    return groupKey.startsWith('assistant:') ? selectPortableAssistantMessages(groupMessages) : groupMessages
+  })
 }
 
 export function buildMobileSyncAssistantPayload({
