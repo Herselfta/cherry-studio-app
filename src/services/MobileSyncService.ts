@@ -9,6 +9,7 @@ import {
 import type { Dispatch } from '@reduxjs/toolkit'
 
 import { getSystemAssistants } from '@/config/assistants'
+import { ensureValidCurrentTopic } from '@/services/AppInitializationService'
 import { loggerService } from '@/services/LoggerService'
 import { preferenceService } from '@/services/PreferenceService'
 import type { Assistant, Provider, Topic } from '@/types/assistant'
@@ -507,6 +508,7 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     }
   }
 
+  await ensureValidCurrentTopic()
   topicService.invalidateCache()
   assistantService.invalidateCache()
 

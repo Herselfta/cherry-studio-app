@@ -12,6 +12,7 @@ import type { Assistant } from '@/types/assistant'
 import { storage } from '@/utils'
 
 import { assistantService, getDefaultAssistant } from './AssistantService'
+import { resolveValidCurrentTopicId } from './currentTopicUtils'
 import { loggerService } from './LoggerService'
 import { mcpService } from './McpService'
 import { preferenceService } from './PreferenceService'
@@ -182,31 +183,36 @@ export function resetAppInitializationState(): void {
   logger.info('App initialization state reset')
 }
 
-async function ensureCurrentTopic(): Promise<void> {
+export async function ensureValidCurrentTopic(): Promise<void> {
   const currentTopicId = await preferenceService.get('topic.current_id')
 
-  // If current topic is set and valid, nothing to do
-  if (currentTopicId) {
-    const topic = await topicDatabase.getTopicById(currentTopicId)
-    if (topic) {
-      return
-    }
-    logger.warn(`Current topic ${currentTopicId} not found, selecting new topic`)
-  }
+  const [topics, assistants] = await Promise.all([topicDatabase.getTopics(), assistantDatabase.getAllAssistants()])
+  const validAssistantIds = new Set(assistants.map(assistant => assistant.id))
+  const nextTopicId = resolveValidCurrentTopicId({
+    currentTopicId,
+    topics,
+    validAssistantIds
+  })
 
-  // Try to get newest existing topic
-  const newestTopic = await topicDatabase.getNewestTopic()
-  if (newestTopic) {
-    await preferenceService.set('topic.current_id', newestTopic.id)
-    logger.info(`Set current topic to newest: ${newestTopic.id}`)
+  if (nextTopicId) {
+    await topicService.switchToTopic(nextTopicId, { refreshFromDatabase: true })
+    if (currentTopicId === nextTopicId) {
+      logger.info(`Rehydrated current topic: ${nextTopicId}`)
+    } else {
+      logger.info(`Switched current topic to valid fallback: ${nextTopicId}`)
+    }
     return
   }
 
-  // No topics exist - create one with default assistant
+  if (currentTopicId) {
+    logger.warn(`Current topic ${currentTopicId} is invalid after reconciliation, creating replacement topic`)
+  }
+
+  // No valid topics exist - create one with default assistant
   const defaultAssistant = await getDefaultAssistant()
   if (defaultAssistant) {
     const newTopic = await topicService.createTopic(defaultAssistant)
-    await preferenceService.set('topic.current_id', newTopic.id)
+    await topicService.switchToTopic(newTopic.id)
     logger.info(`Created new topic: ${newTopic.id}`)
   }
 }
@@ -221,7 +227,7 @@ export async function runAppDataMigrations(): Promise<void> {
     await providerService.initialize()
 
     // Ensure a valid current topic exists
-    await ensureCurrentTopic()
+    await ensureValidCurrentTopic()
 
     return
   }
@@ -253,7 +259,7 @@ export async function runAppDataMigrations(): Promise<void> {
   await providerService.initialize()
 
   // Ensure a valid current topic exists
-  await ensureCurrentTopic()
+  await ensureValidCurrentTopic()
 }
 
 export function getAppDataVersion(): number {

@@ -265,10 +265,11 @@ export class TopicService {
    *
    * @param topicId - The topic ID to switch to
    */
-  public async switchToTopic(topicId: string): Promise<void> {
+  public async switchToTopic(topicId: string, options: { refreshFromDatabase?: boolean } = {}): Promise<void> {
     try {
-      // Load topic using getTopic() which uses LRU cache
-      const topic = await this.getTopic(topicId)
+      const topic = options.refreshFromDatabase
+        ? await topicDatabase.getTopicById(topicId)
+        : await this.getTopic(topicId)
 
       if (!topic) {
         throw new Error(`Topic with ID ${topicId} not found`)
