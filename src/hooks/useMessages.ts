@@ -1,7 +1,7 @@
 import { db } from '@db'
 import { transformDbToMessage } from '@db/mappers'
 import { messageBlocks as messageBlocksSchema, messages as messagesSchema } from '@db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite'
 import { useEffect, useState } from 'react'
 
@@ -13,7 +13,7 @@ export const useMessages = (topicId: string) => {
     .select()
     .from(messagesSchema)
     .where(eq(messagesSchema.topic_id, topicId))
-    .orderBy(messagesSchema.created_at)
+    .orderBy(sql`CAST(${messagesSchema.created_at} AS INTEGER) ASC`)
 
   const { data: rawMessages } = useLiveQuery(messagesQuery, [topicId])
 

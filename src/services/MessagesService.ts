@@ -380,18 +380,15 @@ export async function editUserMessageAndRegenerate(
     // Determine the createdAt for the new assistant message to maintain chronological order
     // Prefer the lowest createdAt of the old assistant messages, fallback to userMessage's createdAt + 1
     let newCreatedAt = Date.now()
-    const validLinkedMsgTimes = linkedAssistantMessages
-      .map(m => m.createdAt)
-      .filter(t => typeof t === 'number' && !isNaN(t) && t > 0)
+    const validLinkedMsgTimes = linkedAssistantMessages.map(m => Number(m.createdAt)).filter(t => !isNaN(t) && t > 0)
 
     if (validLinkedMsgTimes.length > 0) {
       newCreatedAt = Math.min(...validLinkedMsgTimes)
-    } else if (
-      typeof userMessage.createdAt === 'number' &&
-      !isNaN(userMessage.createdAt) &&
-      userMessage.createdAt > 0
-    ) {
-      newCreatedAt = userMessage.createdAt + 1
+    } else {
+      const uTime = Number(userMessage.createdAt)
+      if (!isNaN(uTime) && uTime > 0) {
+        newCreatedAt = uTime + 1
+      }
     }
 
     // 7. Create new assistant message and trigger regeneration

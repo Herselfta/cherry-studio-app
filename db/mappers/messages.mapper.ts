@@ -43,8 +43,8 @@ export function transformMessageToDb(message: Partial<Message>): any {
   if (message.role !== undefined) dbRecord.role = message.role
   if (message.assistantId !== undefined) dbRecord.assistant_id = message.assistantId
   if (message.topicId !== undefined) dbRecord.topic_id = message.topicId
-  if (message.createdAt !== undefined) dbRecord.created_at = message.createdAt
-  if (message.updatedAt !== undefined) dbRecord.updated_at = message.updatedAt
+  if (message.createdAt !== undefined) dbRecord.created_at = Number(message.createdAt)
+  if (message.updatedAt !== undefined) dbRecord.updated_at = Number(message.updatedAt)
   if (message.status !== undefined) dbRecord.status = message.status
   if (message.modelId !== undefined) dbRecord.model_id = message.modelId
   if (message.type !== undefined) dbRecord.type = message.type

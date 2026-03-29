@@ -27,8 +27,8 @@ export function transformTopicToDb(topic: Topic): any {
     id: topic.id,
     assistant_id: topic.assistantId,
     name: topic.name,
-    created_at: topic.createdAt,
-    updated_at: topic.updatedAt,
+    created_at: Number(topic.createdAt),
+    updated_at: Number(topic.updatedAt),
     // 将布尔值转换为数字（1 表示 true，0 表示 false）
     isLoading: topic.isLoading ? 1 : 0
   }
