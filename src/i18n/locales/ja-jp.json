@@ -600,6 +600,14 @@
         "app_logs": "アプリログ",
         "backup": "データバックアップ",
         "basic_title": "基本データ設定",
+        "mobile_sync_import": {
+          "title": "デスクトップ/他デバイスから同期",
+          "description": "モバイル同期ファイルをインポートし、主にチャット履歴を処理"
+        },
+        "mobile_sync_export": {
+          "title": "同期ファイルをエクスポート",
+          "description": "モバイル同期ファイルとしてエクスポート"
+        },
         "clear_cache": {
           "button": "キャッシュをクリアする ({{cacheSize}})",
           "error": "キャッシュの消去に失敗しました。もう一度試してください。問題が解決しない場合は、GitHubでフィードバックをお願いします。",

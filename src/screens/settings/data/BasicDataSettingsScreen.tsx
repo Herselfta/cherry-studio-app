@@ -308,13 +308,15 @@ export default function BasicDataSettingsScreen() {
         },
         {
           id: 'mobile-sync-import',
-          title: t('common.import_from_cherry_studio'),
+          title: t('settings.data.mobile_sync_import.title'),
+          subtitle: t('settings.data.mobile_sync_import.description'),
           icon: <FolderOpen size={24} />,
           onPress: handleImportMobileSync
         },
         {
           id: 'mobile-sync-export',
-          title: t('settings.data.webdav.sync.title'),
+          title: t('settings.data.mobile_sync_export.title'),
+          subtitle: t('settings.data.mobile_sync_export.description'),
           icon: <Save size={24} />,
           onPress: handleExportMobileSync
         },

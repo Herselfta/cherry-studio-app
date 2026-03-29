@@ -61,7 +61,16 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
     props.navigation.navigate('Home', { screen: 'SettingsScreen' })
   }
 
-  const handleNavigateWebDavRestoreScreen = () => {
+  const handleNavigateBasicDataSettingsScreen = () => {
+    props.navigation.navigate('Home', {
+      screen: 'DataSourcesSettings',
+      params: {
+        screen: 'BasicDataSettingsScreen'
+      }
+    })
+  }
+
+  const handleNavigateCloudBackupScreen = () => {
     const hasConfiguredWebDav = hasValidWebDavConfig(getWebDavConfig())
 
     props.navigation.navigate('Home', {
@@ -221,8 +230,8 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
         </PressableRow>
         <XStack className="items-center gap-5 pr-4">
           <IconButton icon={<Palette size={24} />} onPress={handleToggleTheme} />
-          <IconButton icon={<Cloud size={24} />} onPress={handleWebDavMobileSyncBackup} />
-          <IconButton icon={<Download size={24} />} onPress={handleNavigateWebDavRestoreScreen} />
+          <IconButton icon={<Cloud size={24} />} onPress={handleNavigateCloudBackupScreen} />
+          <IconButton icon={<Download size={24} />} onPress={handleNavigateBasicDataSettingsScreen} />
           <IconButton icon={<Settings size={24} />} onPress={handleNavigateSettingsScreen} />
         </XStack>
       </XStack>

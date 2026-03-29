@@ -600,6 +600,14 @@
         "app_logs": "App Logs",
         "backup": "Data Backup",
         "basic_title": "Basic Data Settings",
+        "mobile_sync_import": {
+          "title": "Sync from Desktop/Other Devices",
+          "description": "Import mobile sync file, mainly for chat history"
+        },
+        "mobile_sync_export": {
+          "title": "Export Sync File",
+          "description": "Export to mobile sync file"
+        },
         "clear_cache": {
           "button": "Clear Cache ({{cacheSize}})",
           "error": "Failed to clear cache. Please try again. If the issue persists, report it on GitHub.",

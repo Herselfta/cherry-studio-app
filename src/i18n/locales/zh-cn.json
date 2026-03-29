@@ -600,6 +600,14 @@
         "app_logs": "应用日志",
         "backup": "数据备份",
         "basic_title": "基础数据设置",
+        "mobile_sync_import": {
+          "title": "从桌面端/其他设备同步",
+          "description": "导入mobile同步文件，主要处理聊天记录"
+        },
+        "mobile_sync_export": {
+          "title": "导出同步文件",
+          "description": "导出为mobile同步文件"
+        },
         "clear_cache": {
           "button": "清除缓存 ({{cacheSize}})",
           "error": "清除缓存失败。请重试，如果问题持续存在，请在GitHub上反馈。",
