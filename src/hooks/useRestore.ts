@@ -8,7 +8,12 @@ import type { RestoreStep } from '@/componentsV2/features/SettingsScreen/data/Re
 import { databaseMaintenance } from '@/database/DatabaseMaintenance'
 import { resetAppInitializationState, runAppDataMigrations } from '@/services/AppInitializationService'
 import { type ProgressUpdate, restore, type RestoreStepId, type StepStatus } from '@/services/BackupService'
-import { resetCacheDirectory } from '@/services/FileService'
+import {
+  cleanupStagedRestoreInputFile,
+  resetCacheDirectory,
+  shouldStageRestoreInputFile,
+  stageRestoreInputFile
+} from '@/services/FileService'
 import { loggerService } from '@/services/LoggerService'
 import type { FileMetadata } from '@/types/file'
 import { uuid } from '@/utils'
@@ -167,7 +172,15 @@ export function useRestore(options: UseRestoreOptions = {}) {
 
     // Use setTimeout to ensure the modal renders before starting the restore process
     setTimeout(async () => {
+      let restoreInput = file
+      const originalRestoreUri = file.uri
+
       try {
+        if (shouldStageRestoreInputFile(file.uri, clearBeforeRestore)) {
+          logger.info('Staging restore input file before clearing cache:', file.name)
+          restoreInput = await stageRestoreInputFile(file)
+        }
+
         // 清除现有数据（如果启用）
         // 流程：重置数据库 -> 运行 v1 seed -> 恢复备份数据 -> restore() 内部运行增量迁移
         if (clearBeforeRestore) {
@@ -190,12 +203,14 @@ export function useRestore(options: UseRestoreOptions = {}) {
           }
         }
 
-        const fileObject = createFileObject(file)
+        const fileObject = createFileObject(restoreInput)
         await customRestoreFunction(fileObject, handleProgressUpdate, dispatch)
         setOverallStatus('success')
       } catch (err) {
         logger.error('Error during restore process:', err)
         handleError()
+      } finally {
+        cleanupStagedRestoreInputFile(restoreInput.uri, originalRestoreUri)
       }
     }, 400)
   }

@@ -24,8 +24,17 @@ export interface WriteBase64FileOptions {
   originName?: string
 }
 
+export interface RestoreInputFile {
+  name: string
+  uri: string
+  size?: number
+  mimeType?: string
+  type?: string
+}
+
 const logger = loggerService.withContext('File Service')
 const { getAllFiles, getFileById } = fileDatabase
+const RESTORE_STAGING_STORAGE = new Directory(Paths.document, 'CherryStudioRestore')
 
 function resolveImageExtension(data: string, extension?: string) {
   if (extension) {
@@ -128,6 +137,53 @@ export async function saveTextAsFile(text: string, fileName?: string): Promise<F
   fileDatabase.upsertFiles([fileMetadata])
 
   return fileMetadata
+}
+
+export function shouldStageRestoreInputFile(fileUri: string, clearBeforeRestore: boolean) {
+  if (!clearBeforeRestore) {
+    return false
+  }
+
+  return fileUri.startsWith('file://') || fileUri.startsWith('content://') || fileUri.startsWith('/')
+}
+
+function sanitizeRestoreInputFileName(fileName: string) {
+  const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '')
+  return sanitizedName || 'restore-input'
+}
+
+export async function stageRestoreInputFile<T extends RestoreInputFile>(file: T): Promise<T> {
+  await ensureDirExists(RESTORE_STAGING_STORAGE)
+
+  const stagedFile = new File(RESTORE_STAGING_STORAGE, `${uuid()}-${sanitizeRestoreInputFileName(file.name)}`)
+  await FileSystem.copyAsync({
+    from: file.uri,
+    to: stagedFile.uri
+  })
+
+  const stagedInfo = stagedFile.info()
+
+  return {
+    ...file,
+    uri: stagedFile.uri,
+    size: file.size || stagedInfo.size || 0
+  }
+}
+
+export function cleanupStagedRestoreInputFile(stagedUri: string, originalUri: string) {
+  if (!stagedUri || stagedUri === originalUri || !stagedUri.startsWith(RESTORE_STAGING_STORAGE.uri)) {
+    return
+  }
+
+  try {
+    const stagedFile = new File(stagedUri)
+
+    if (stagedFile.exists) {
+      stagedFile.delete()
+    }
+  } catch (error) {
+    logger.warn('cleanupStagedRestoreInputFile', error)
+  }
 }
 
 export function readStreamFile(file: FileMetadata): ReadableStream {
