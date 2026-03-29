@@ -178,6 +178,42 @@ describe('portableSyncState', () => {
     expect(result.deletedTopicIds).toEqual(['shared-topic'])
   })
 
+  it('ignores topic versions that no longer have a normalized incoming topic entity', () => {
+    const remoteStorage = createMemoryStorage()
+    remoteStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'desktop-b')
+
+    const remoteTopic = createTopic({ id: 'filtered-topic', assistantId: 'default' })
+    const remoteState = preparePortableSyncState(
+      {
+        topics: [remoteTopic],
+        messages: [],
+        messageBlocks: []
+      },
+      remoteStorage
+    )
+
+    const result = resolvePortableSyncSnapshot({
+      currentTopics: [],
+      incomingTopics: [],
+      currentMessages: [],
+      incomingMessages: [],
+      currentMessageBlocks: [],
+      incomingMessageBlocks: [],
+      localState: preparePortableSyncState(
+        {
+          topics: [],
+          messages: [],
+          messageBlocks: []
+        },
+        createMemoryStorage()
+      ),
+      incomingSync: toPortableSyncMetadata(remoteState)
+    })
+
+    expect(result.topics).toEqual([])
+    expect(result.deletedTopicIds).toEqual([])
+  })
+
   it('keeps only the latest assistant slot winner across replicas', () => {
     const topic = createTopic({ id: 'topic-1', assistantId: 'default' })
     const userMessage = createMessage({

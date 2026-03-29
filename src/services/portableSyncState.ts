@@ -545,18 +545,20 @@ export function resolvePortableSyncSnapshot({
     const localVersion = localState.entityVersions.topics[topicId]
     const remoteVersion = incomingSync.entityVersions.topics[topicId]
     const tombstoneVersion = mergedTombstones.topics[topicId]
+    const localTopic = currentTopicMap.get(topicId)
+    const remoteTopic = incomingTopicMap.get(topicId)
 
-    const localActive = comparePortableSyncVersions(localVersion, tombstoneVersion) > 0
-    const remoteActive = comparePortableSyncVersions(remoteVersion, tombstoneVersion) > 0
+    const localActive = Boolean(localTopic) && comparePortableSyncVersions(localVersion, tombstoneVersion) > 0
+    const remoteActive = Boolean(remoteTopic) && comparePortableSyncVersions(remoteVersion, tombstoneVersion) > 0
 
     if (localActive && (!remoteActive || comparePortableSyncVersions(localVersion, remoteVersion) >= 0)) {
-      topicMap.set(topicId, currentTopicMap.get(topicId)!)
+      topicMap.set(topicId, localTopic!)
       topicVersions[topicId] = localVersion!
       continue
     }
 
     if (remoteActive) {
-      topicMap.set(topicId, incomingTopicMap.get(topicId)!)
+      topicMap.set(topicId, remoteTopic!)
       topicVersions[topicId] = remoteVersion!
     }
   }
