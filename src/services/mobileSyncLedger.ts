@@ -5,6 +5,7 @@ const logger = loggerService.withContext('MobileSyncLedger')
 
 export const MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY = 'mobile_sync_source_device_id'
 export const MOBILE_SYNC_LEDGER_STORAGE_KEY = 'mobile_sync_ledger_v2'
+export const MOBILE_SYNC_GLOBAL_LEDGER_STORAGE_KEY = 'mobile_sync_global_ledger_v3'
 export const MOBILE_SYNC_LEGACY_LEDGER_STORAGE_KEY = 'mobile_sync_legacy_ledger_v1'
 
 export type MobileSyncLedgerEntry = {
@@ -16,6 +17,7 @@ export type MobileSyncLedgerEntry = {
 
 export type MobileSyncLedger = Record<string, MobileSyncLedgerEntry>
 export type MobileSyncLegacyLedger = Record<string, MobileSyncLedgerEntry>
+export type MobileSyncStorage = Pick<typeof storage, 'getString' | 'set' | 'delete'>
 
 function normalizeLedgerEntry(entry: MobileSyncLedgerEntry): MobileSyncLedgerEntry {
   return {
@@ -26,19 +28,19 @@ function normalizeLedgerEntry(entry: MobileSyncLedgerEntry): MobileSyncLedgerEnt
   }
 }
 
-export function getOrCreateMobileSyncSourceDeviceId() {
-  const existing = storage.getString(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY)
+export function getOrCreateMobileSyncSourceDeviceId(targetStorage: MobileSyncStorage = storage) {
+  const existing = targetStorage.getString(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY)
   if (existing) {
     return existing
   }
 
   const deviceId = uuid()
-  storage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, deviceId)
+  targetStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, deviceId)
   return deviceId
 }
 
-export function readMobileSyncLedger(): MobileSyncLedger {
-  const serialized = storage.getString(MOBILE_SYNC_LEDGER_STORAGE_KEY)
+export function readMobileSyncLedger(targetStorage: MobileSyncStorage = storage): MobileSyncLedger {
+  const serialized = targetStorage.getString(MOBILE_SYNC_LEDGER_STORAGE_KEY)
   if (!serialized) {
     return {}
   }
@@ -51,18 +53,48 @@ export function readMobileSyncLedger(): MobileSyncLedger {
   }
 }
 
-export function getMobileSyncLedgerEntry(sourceDeviceId: string): MobileSyncLedgerEntry | undefined {
-  return readMobileSyncLedger()[sourceDeviceId]
+export function getMobileSyncLedgerEntry(
+  sourceDeviceId: string,
+  targetStorage: MobileSyncStorage = storage
+): MobileSyncLedgerEntry | undefined {
+  return readMobileSyncLedger(targetStorage)[sourceDeviceId]
 }
 
-export function writeMobileSyncLedgerEntry(sourceDeviceId: string, entry: MobileSyncLedgerEntry) {
-  const ledger = readMobileSyncLedger()
+export function writeMobileSyncLedgerEntry(
+  sourceDeviceId: string,
+  entry: MobileSyncLedgerEntry,
+  targetStorage: MobileSyncStorage = storage
+) {
+  const ledger = readMobileSyncLedger(targetStorage)
   ledger[sourceDeviceId] = normalizeLedgerEntry(entry)
-  storage.set(MOBILE_SYNC_LEDGER_STORAGE_KEY, JSON.stringify(ledger))
+  targetStorage.set(MOBILE_SYNC_LEDGER_STORAGE_KEY, JSON.stringify(ledger))
 }
 
-export function readLegacyMobileSyncLedger(): MobileSyncLegacyLedger {
-  const serialized = storage.getString(MOBILE_SYNC_LEGACY_LEDGER_STORAGE_KEY)
+export function getLatestMobileSyncLedgerEntry(
+  targetStorage: MobileSyncStorage = storage
+): MobileSyncLedgerEntry | undefined {
+  const serialized = targetStorage.getString(MOBILE_SYNC_GLOBAL_LEDGER_STORAGE_KEY)
+  if (!serialized) {
+    return undefined
+  }
+
+  try {
+    return normalizeLedgerEntry(JSON.parse(serialized) as MobileSyncLedgerEntry)
+  } catch (error) {
+    logger.warn('Failed to parse global mobile sync ledger', error)
+    return undefined
+  }
+}
+
+export function writeLatestMobileSyncLedgerEntry(
+  entry: MobileSyncLedgerEntry,
+  targetStorage: MobileSyncStorage = storage
+) {
+  targetStorage.set(MOBILE_SYNC_GLOBAL_LEDGER_STORAGE_KEY, JSON.stringify(normalizeLedgerEntry(entry)))
+}
+
+export function readLegacyMobileSyncLedger(targetStorage: MobileSyncStorage = storage): MobileSyncLegacyLedger {
+  const serialized = targetStorage.getString(MOBILE_SYNC_LEGACY_LEDGER_STORAGE_KEY)
   if (!serialized) {
     return {}
   }
@@ -75,18 +107,25 @@ export function readLegacyMobileSyncLedger(): MobileSyncLegacyLedger {
   }
 }
 
-export function getLegacyMobileSyncLedgerEntry(sourceKey: string): MobileSyncLedgerEntry | undefined {
-  return readLegacyMobileSyncLedger()[sourceKey]
+export function getLegacyMobileSyncLedgerEntry(
+  sourceKey: string,
+  targetStorage: MobileSyncStorage = storage
+): MobileSyncLedgerEntry | undefined {
+  return readLegacyMobileSyncLedger(targetStorage)[sourceKey]
 }
 
-export function writeLegacyMobileSyncLedgerEntry(sourceKey: string, entry: MobileSyncLedgerEntry) {
-  const ledger = readLegacyMobileSyncLedger()
+export function writeLegacyMobileSyncLedgerEntry(
+  sourceKey: string,
+  entry: MobileSyncLedgerEntry,
+  targetStorage: MobileSyncStorage = storage
+) {
+  const ledger = readLegacyMobileSyncLedger(targetStorage)
   ledger[sourceKey] = normalizeLedgerEntry(entry)
-  storage.set(MOBILE_SYNC_LEGACY_LEDGER_STORAGE_KEY, JSON.stringify(ledger))
+  targetStorage.set(MOBILE_SYNC_LEGACY_LEDGER_STORAGE_KEY, JSON.stringify(ledger))
 }
 
-export function removeLegacyMobileSyncLedgerEntry(sourceKey: string) {
-  const ledger = readLegacyMobileSyncLedger()
+export function removeLegacyMobileSyncLedgerEntry(sourceKey: string, targetStorage: MobileSyncStorage = storage) {
+  const ledger = readLegacyMobileSyncLedger(targetStorage)
   if (!(sourceKey in ledger)) {
     return
   }
@@ -94,9 +133,9 @@ export function removeLegacyMobileSyncLedgerEntry(sourceKey: string) {
   delete ledger[sourceKey]
 
   if (Object.keys(ledger).length === 0) {
-    storage.delete(MOBILE_SYNC_LEGACY_LEDGER_STORAGE_KEY)
+    targetStorage.delete(MOBILE_SYNC_LEGACY_LEDGER_STORAGE_KEY)
     return
   }
 
-  storage.set(MOBILE_SYNC_LEGACY_LEDGER_STORAGE_KEY, JSON.stringify(ledger))
+  targetStorage.set(MOBILE_SYNC_LEGACY_LEDGER_STORAGE_KEY, JSON.stringify(ledger))
 }

@@ -19,30 +19,29 @@ import type { WebSearchProvider } from '@/types/websearch'
 import { assistantService } from './AssistantService'
 import { cleanupOrphanedImportedFiles, materializePortableImageBlocks, type ProgressUpdate } from './BackupService'
 import { readBase64File } from './FileService'
-import {
-  getLegacyMobileSyncLedgerEntry,
-  getMobileSyncLedgerEntry,
-  getOrCreateMobileSyncSourceDeviceId,
-  removeLegacyMobileSyncLedgerEntry,
-  writeLegacyMobileSyncLedgerEntry,
-  writeMobileSyncLedgerEntry
-} from './mobileSyncLedger'
+import { getOrCreateMobileSyncSourceDeviceId } from './mobileSyncLedger'
 import {
   buildMobileSyncAssistantPayload,
   collectPortableSyncImageAssets,
   normalizeMobileSyncExportTopics,
   normalizeMobileSyncImportTopics,
   normalizePortableConversationMessages,
-  type PortableSyncImageAsset,
-  resolveMobileConversationSync
+  type PortableSyncImageAsset
 } from './mobileSyncUtils'
+import {
+  type PortableSyncMetadata,
+  preparePortableSyncState,
+  resolvePortableSyncSnapshot,
+  toPortableSyncMetadata,
+  writePortableSyncState
+} from './portableSyncState'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
 
 const logger = loggerService.withContext('MobileSyncService')
 
 export const MOBILE_SYNC_SCHEMA = 'cherry-studio-cross-device-sync'
-export const MOBILE_SYNC_SCHEMA_VERSION = 2
+export const MOBILE_SYNC_SCHEMA_VERSION = 3
 export const MOBILE_SYNC_FILE_MARKER = '.mobile-sync.'
 
 type SyncSettings = {
@@ -92,6 +91,7 @@ type MobileSyncPayload = {
   sourceDeviceId?: string
   sourcePlatform?: 'desktop' | 'mobile'
   exportedAt: number
+  sync?: PortableSyncMetadata
   data: SyncData
 }
 
@@ -243,6 +243,12 @@ export async function exportMobileSyncPayload(): Promise<string> {
   const searchWithTime = await preferenceService.get('websearch.search_with_time')
   const maxResults = await preferenceService.get('websearch.max_results')
   const sourceDeviceId = getOrCreateMobileSyncSourceDeviceId()
+  const currentMessageIds = new Set(messages.map(message => message.id))
+  const portableSyncState = preparePortableSyncState({
+    topics,
+    messages,
+    messageBlocks: messageBlocks.filter(block => currentMessageIds.has(block.messageId))
+  })
   const mobileSyncAssistants = defaultAssistant ? [defaultAssistant, ...externalAssistants] : externalAssistants
   const normalizedTopics = normalizeMobileSyncExportTopics({
     assistants: mobileSyncAssistants,
@@ -261,6 +267,7 @@ export async function exportMobileSyncPayload(): Promise<string> {
     version: MOBILE_SYNC_SCHEMA_VERSION,
     sourcePlatform: 'mobile',
     sourceDeviceId,
+    lamport: portableSyncState.lamport,
     rawTopicCount: topics.length,
     normalizedTopicCount: normalizedTopics.length,
     rawMessageCount: messages.length,
@@ -283,6 +290,7 @@ export async function exportMobileSyncPayload(): Promise<string> {
     sourceDeviceId,
     sourcePlatform: 'mobile',
     exportedAt: Date.now(),
+    sync: toPortableSyncMetadata(portableSyncState),
     data: {
       assistants: {
         defaultAssistant: sanitizeAssistantForSync(syncDefaultAssistant),
@@ -337,29 +345,16 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       }) as Assistant
   )
   let mutatedAssistantIds = allAssistants.map(assistant => assistant.id)
-  const shouldUseSourceAwareImport = parsed.version >= 2 && Boolean(parsed.sourceDeviceId)
-  const legacySourceKey = parsed.sourcePlatform || parsed.source
-  const deviceLedgerEntry = shouldUseSourceAwareImport ? getMobileSyncLedgerEntry(parsed.sourceDeviceId!) : undefined
-  const legacyLedgerEntry =
-    shouldUseSourceAwareImport && !deviceLedgerEntry ? getLegacyMobileSyncLedgerEntry(legacySourceKey) : undefined
-  const previousLedgerEntry = deviceLedgerEntry || legacyLedgerEntry
+  const isVersionedSync = parsed.version >= 3 && Boolean(parsed.sync?.replicaId)
 
   logger.info('Importing mobile sync payload', {
     version: parsed.version,
     source: parsed.source,
     sourcePlatform: parsed.sourcePlatform,
     sourceDeviceId: parsed.sourceDeviceId,
-    sourceAware: shouldUseSourceAwareImport,
-    hasPreviousLedgerEntry: Boolean(previousLedgerEntry),
-    hasDeviceLedgerEntry: Boolean(deviceLedgerEntry),
-    hasLegacyLedgerEntry: Boolean(legacyLedgerEntry)
+    sourceAware: isVersionedSync,
+    replicaId: parsed.sync?.replicaId
   })
-
-  if (shouldUseSourceAwareImport && !previousLedgerEntry) {
-    logger.warn(
-      `First source-aware mobile sync import detected for ${parsed.sourceDeviceId}. Deletions will become active after this baseline import.`
-    )
-  }
 
   if (parsed.data.settings.userName) {
     await preferenceService.set('user.name', parsed.data.settings.userName)
@@ -410,17 +405,11 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     })
   }
 
-  if (!shouldUseSourceAwareImport) {
+  if (!isVersionedSync) {
     await assistantDatabase.upsertAssistants(allAssistants)
     await topicDatabase.upsertTopics(normalizedIncomingTopics)
     await messageDatabase.upsertMessages(normalizedIncomingMessages)
     await messageBlockDatabase.upsertBlocks(restoredMessageBlocks)
-    writeLegacyMobileSyncLedgerEntry(legacySourceKey, {
-      lastImportedExportedAt: parsed.exportedAt,
-      topicIds: normalizedIncomingTopics.map(topic => topic.id),
-      messageIds: normalizedIncomingMessages.map(message => message.id),
-      blockIds: restoredMessageBlocks.map(block => block.id)
-    })
   } else {
     const [currentTopics, currentMessages, currentMessageBlocks, currentAssistants] = await Promise.all([
       topicDatabase.getTopics(),
@@ -428,21 +417,27 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       messageBlockDatabase.getAllBlocks(),
       assistantDatabase.getAllAssistants()
     ])
-    const resolvedConversation = resolveMobileConversationSync({
+    const localSyncState = preparePortableSyncState({
+      topics: currentTopics,
+      messages: currentMessages,
+      messageBlocks: currentMessageBlocks
+    })
+    const resolvedConversation = resolvePortableSyncSnapshot({
       currentTopics,
       incomingTopics: normalizedIncomingTopics,
       currentMessages,
       incomingMessages: normalizedIncomingMessages,
       currentMessageBlocks,
       incomingMessageBlocks: restoredMessageBlocks,
-      exportedAt: parsed.exportedAt,
-      previousLedgerEntry
+      localState: localSyncState,
+      incomingSync: parsed.sync!
     })
     logger.info('Resolved mobile sync conversation snapshot', {
       sourceDeviceId: parsed.sourceDeviceId,
-      previousLedgerTopicCount: previousLedgerEntry?.topicIds.length || 0,
-      previousLedgerMessageCount: previousLedgerEntry?.messageIds.length || 0,
-      previousLedgerBlockCount: previousLedgerEntry?.blockIds.length || 0,
+      replicaId: parsed.sync?.replicaId,
+      currentTopicCount: currentTopics.length,
+      currentMessageCount: currentMessages.length,
+      currentBlockCount: currentMessageBlocks.length,
       rawIncomingTopicCount: rawIncomingTopics.length,
       rawIncomingMessageCount: rawIncomingMessages.length,
       rawIncomingBlockCount: rawRestoredMessageBlocks.length,
@@ -454,8 +449,7 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       resolvedBlockCount: resolvedConversation.messageBlocks.length,
       deletedTopicCount: resolvedConversation.deletedTopicIds.length,
       deletedMessageCount: resolvedConversation.deletedMessageIds.length,
-      deletedBlockCount: resolvedConversation.deletedBlockIds.length,
-      isStaleImport: resolvedConversation.isStaleImport
+      deletedBlockCount: resolvedConversation.deletedBlockIds.length
     })
     const systemAssistantIds = new Set(getSystemAssistants().map(assistant => assistant.id))
     const resolvedAssistantPayload = buildMobileSyncAssistantPayload({
@@ -499,14 +493,16 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     await messageDatabase.upsertMessages(resolvedConversation.messages)
     await messageBlockDatabase.upsertBlocks(resolvedConversation.messageBlocks)
     await cleanupOrphanedImportedFiles(candidateFileIds, resolvedConversation.messageBlocks)
+    writePortableSyncState(resolvedConversation.syncState)
 
-    if (!resolvedConversation.isStaleImport && resolvedConversation.nextLedgerEntry) {
-      writeMobileSyncLedgerEntry(parsed.sourceDeviceId!, resolvedConversation.nextLedgerEntry)
-      removeLegacyMobileSyncLedgerEntry(legacySourceKey)
-    } else if (resolvedConversation.isStaleImport) {
-      logger.warn(
-        `Skipping destructive mobile sync actions for stale payload from ${parsed.sourceDeviceId} exported at ${parsed.exportedAt}`
-      )
+    if (resolvedConversation.deletedTopicIds.length > 0) {
+      logger.info(`Deleted ${resolvedConversation.deletedTopicIds.length} topic(s) from versioned mobile sync`)
+    }
+    if (resolvedConversation.deletedMessageIds.length > 0) {
+      logger.info(`Deleted ${resolvedConversation.deletedMessageIds.length} message(s) from versioned mobile sync`)
+    }
+    if (resolvedConversation.deletedBlockIds.length > 0) {
+      logger.info(`Deleted ${resolvedConversation.deletedBlockIds.length} block(s) from versioned mobile sync`)
     }
   }
 
