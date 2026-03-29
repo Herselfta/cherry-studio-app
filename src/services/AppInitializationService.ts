@@ -296,4 +296,3 @@ export async function runAppDataMigrations(): Promise<void> {
 export function getAppDataVersion(): number {
   return LATEST_APP_DATA_VERSION
 }
-

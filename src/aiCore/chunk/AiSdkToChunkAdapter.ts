@@ -153,7 +153,7 @@ export class AiSdkToChunkAdapter {
         break
       case 'text-delta': {
         this.hasTextContent = true
-        const processedText = chunk.text || ''
+        const processedText = chunk.textDelta || chunk.text || chunk.delta || ''
         let finalText: string
 
         // Only apply link conversion if web search is enabled
@@ -207,8 +207,9 @@ export class AiSdkToChunkAdapter {
         // }
         break
       case 'reasoning-delta': {
-        final.reasoningContent += chunk.text || ''
-        if (chunk.text) {
+        const deltaText = chunk.textDelta || chunk.text || chunk.delta || ''
+        final.reasoningContent += deltaText
+        if (deltaText) {
           this.markFirstTokenIfNeeded()
         }
         // 从插件 metadata 中提取思考时间
