@@ -103,9 +103,19 @@ const AssistantItemSheet: React.FC = () => {
       await assistantService.createAssistant(newAssistant)
     }
 
-    const topic = await topicService.createTopic(newAssistant)
-    await switchTopic(topic.id)
-    await onChatNavigation(topic.id)
+    const assistantTopics = await topicService.getTopicsByAssistantId(newAssistant.id)
+    const latestTopic = assistantTopics[0]
+
+    let targetTopicId: string
+    if (latestTopic) {
+      targetTopicId = latestTopic.id
+    } else {
+      const topic = await topicService.createTopic(newAssistant)
+      targetTopicId = topic.id
+    }
+
+    await switchTopic(targetTopicId)
+    await onChatNavigation(targetTopicId)
 
     dismissAssistantItemSheet()
   }

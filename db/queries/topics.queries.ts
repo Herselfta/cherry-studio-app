@@ -129,7 +129,7 @@ export async function getTopicsByAssistantId(assistantId: string): Promise<Topic
       .select()
       .from(topics)
       .where(eq(topics.assistant_id, assistantId))
-      .orderBy(desc(topics.created_at))
+      .orderBy(desc(topics.updated_at))
 
     if (results.length === 0) {
       return []
