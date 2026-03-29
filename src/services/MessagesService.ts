@@ -377,10 +377,17 @@ export async function editUserMessageAndRegenerate(
       await messageDatabase.deleteMessageById(assistantMsg.id)
     }
 
+    // Determine the createdAt for the new assistant message to maintain chronological order
+    // Prefer the lowest createdAt of the old assistant messages, fallback to userMessage's createdAt + 1
+    const newCreatedAt = linkedAssistantMessages.length > 0 
+      ? Math.min(...linkedAssistantMessages.map(m => m.createdAt))
+      : userMessage.createdAt + 1
+
     // 7. Create new assistant message and trigger regeneration
     const newAssistantMessage = createAssistantMessage(assistant.id, topicId, {
       askId: userMessageId,
-      model: assistant.model
+      model: assistant.model,
+      createdAt: newCreatedAt
     })
     await saveMessageAndBlocksToDB(newAssistantMessage, [])
 
@@ -747,12 +754,15 @@ export async function multiModelResponses(
   const assistantMessageStubs: Message[] = []
   const tasksToQueue: { assistantConfig: Assistant; messageStub: Message }[] = []
 
+  let nextCreatedAt = triggeringMessage.createdAt + 1
+
   for (const mentionedModel of mentionedModels) {
     const assistantForThisMention = { ...assistant, model: mentionedModel }
     const assistantMessage = createAssistantMessage(assistant.id, topicId, {
       askId: triggeringMessage.id,
       model: mentionedModel,
-      modelId: mentionedModel.id
+      modelId: mentionedModel.id,
+      createdAt: nextCreatedAt++
     })
     await messageDatabase.upsertMessages(assistantMessage)
     assistantMessageStubs.push(assistantMessage)

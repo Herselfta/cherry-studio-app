@@ -322,7 +322,7 @@ export function createMessage(
 export function createAssistantMessage(
   assistantId: Assistant['id'],
   topicId: Topic['id'],
-  overrides: Partial<Omit<Message, 'id' | 'role' | 'assistantId' | 'topicId' | 'createdAt' | 'type' | 'status'>> = {}
+  overrides: Partial<Omit<Message, 'id' | 'role' | 'assistantId' | 'topicId' | 'type' | 'status'>> = {}
 ): Message {
   const now = Date.now()
   const messageId = uuid()

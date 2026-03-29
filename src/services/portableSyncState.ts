@@ -384,9 +384,21 @@ function reconcileVersionedSet<T extends { id: string }>(
 
 export function preparePortableSyncState(
   snapshot: PortableSyncSnapshot,
-  targetStorage: MobileSyncStorage = storage
+  targetStorage: MobileSyncStorage = storage,
+  incomingFrontier?: Record<string, number>
 ): PortableSyncState {
   const state = cloneState(readPortableSyncState(targetStorage))
+
+  // Advance the local Lamport clock to incorporate the incoming device's frontier BEFORE
+  // computing new entity versions or tombstones. Without this, locally-deleted topics get
+  // tombstone Lamports that are lower than the remote's entity version Lamports (because the
+  // stored frontier is stale and hasn't seen the remote's recent operations), causing the
+  // remote to "win" and resurrect topics that were intentionally deleted locally. The same
+  // issue causes locally-renamed topics to be overwritten by the remote's older name.
+  if (incomingFrontier) {
+    state.frontier = mergeFrontier(state.frontier, incomingFrontier)
+    state.lamport = Math.max(state.lamport, ...Object.values(state.frontier))
+  }
 
   reconcileVersionedSet(
     snapshot.topics,

@@ -418,11 +418,15 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       messageBlockDatabase.getAllBlocks(),
       assistantDatabase.getAllAssistants()
     ])
-    const localSyncState = preparePortableSyncState({
-      topics: currentTopics,
-      messages: currentMessages,
-      messageBlocks: currentMessageBlocks
-    })
+    const localSyncState = preparePortableSyncState(
+      {
+        topics: currentTopics,
+        messages: currentMessages,
+        messageBlocks: currentMessageBlocks
+      },
+      undefined,
+      parsed.sync!.frontier
+    )
     const resolvedConversation = resolvePortableSyncSnapshot({
       currentTopics,
       incomingTopics: normalizedIncomingTopics,
