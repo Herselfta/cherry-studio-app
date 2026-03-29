@@ -29,6 +29,7 @@ import {
 } from '@/services/WebDavService'
 import { ThemeMode } from '@/types'
 import type { Assistant } from '@/types/assistant'
+import { storage } from '@/utils'
 
 import { AssistantList } from './AssistantList'
 import { MenuTabContent } from './MenuTabContent'
@@ -155,10 +156,14 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
     try {
       const assistantTopics = await topicService.getTopicsByAssistantId(assistant.id)
       const latestTopic = assistantTopics[0]
+      const lastOpenedTopicId = storage.getString(`assistant_last_topic_${assistant.id}`)
+      const lastOpenedTopic = lastOpenedTopicId ? assistantTopics.find(t => t.id === lastOpenedTopicId) : null
 
-      if (latestTopic) {
-        await switchTopic(latestTopic.id)
-        handleNavigateChatScreen(latestTopic.id)
+      const targetTopic = lastOpenedTopic || latestTopic
+
+      if (targetTopic) {
+        await switchTopic(targetTopic.id)
+        handleNavigateChatScreen(targetTopic.id)
         return
       }
 

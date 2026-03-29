@@ -17,7 +17,7 @@ import { useCurrentTopic } from '@/hooks/useTopic'
 import { assistantService } from '@/services/AssistantService'
 import { topicService } from '@/services/TopicService'
 import type { Assistant } from '@/types/assistant'
-import { uuid } from '@/utils'
+import { uuid, storage } from '@/utils'
 import { isIOS, isIOS26 } from '@/utils/device'
 import { formateEmoji } from '@/utils/formats'
 
@@ -105,9 +105,13 @@ const AssistantItemSheet: React.FC = () => {
 
     const assistantTopics = await topicService.getTopicsByAssistantId(newAssistant.id)
     const latestTopic = assistantTopics[0]
+    const lastOpenedTopicId = storage.getString(`assistant_last_topic_${newAssistant.id}`)
+    const lastOpenedTopic = lastOpenedTopicId ? assistantTopics.find(t => t.id === lastOpenedTopicId) : null
 
     let targetTopicId: string
-    if (latestTopic) {
+    if (lastOpenedTopic) {
+      targetTopicId = lastOpenedTopic.id
+    } else if (latestTopic) {
       targetTopicId = latestTopic.id
     } else {
       const topic = await topicService.createTopic(newAssistant)

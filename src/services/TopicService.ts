@@ -44,7 +44,7 @@ import { t } from 'i18next'
 import { loggerService } from '@/services/LoggerService'
 import { preferenceService } from '@/services/PreferenceService'
 import type { Assistant, Topic } from '@/types/assistant'
-import { uuid } from '@/utils'
+import { uuid, storage } from '@/utils'
 
 const logger = loggerService.withContext('TopicService')
 
@@ -303,6 +303,9 @@ export class TopicService {
       try {
         // Persist to preference store
         await preferenceService.set('topic.current_id', topicId)
+        if (topic.assistantId) {
+          storage.set(`assistant_last_topic_${topic.assistantId}`, topicId)
+        }
         logger.info(`Switched to topic: ${topicId}`)
       } catch (error) {
         // Rollback on failure
