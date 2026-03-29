@@ -249,12 +249,13 @@ export async function exportMobileSyncPayload(): Promise<string> {
     messages,
     messageBlocks: messageBlocks.filter(block => currentMessageIds.has(block.messageId))
   })
+  const activeTopicIds = new Set(Object.keys(portableSyncState.entityVersions.topics))
   const mobileSyncAssistants = defaultAssistant ? [defaultAssistant, ...externalAssistants] : externalAssistants
   const normalizedTopics = normalizeMobileSyncExportTopics({
     assistants: mobileSyncAssistants,
     messages,
     topics
-  })
+  }).filter(topic => activeTopicIds.has(topic.id))
   const normalizedTopicIds = new Set(normalizedTopics.map(topic => topic.id))
   const normalizedMessages = normalizePortableConversationMessages(
     messages.filter(message => normalizedTopicIds.has(message.topicId))

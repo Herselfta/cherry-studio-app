@@ -358,6 +358,7 @@ describe('resolveMobileConversationSync', () => {
       assistantId: 'default',
       topicId: 'topic-1',
       askId: 'user-message',
+      modelId: 'model-a',
       createdAt: 20
     })
     const assistantB = createMessage({
@@ -365,12 +366,43 @@ describe('resolveMobileConversationSync', () => {
       assistantId: 'default',
       topicId: 'topic-1',
       askId: 'user-message',
+      modelId: 'model-b',
       createdAt: 30
     })
 
     expect(
       normalizePortableConversationMessages([userMessage, assistantA, assistantB]).map(message => message.id)
     ).toEqual(['user-message', 'assistant-a', 'assistant-b'])
+  })
+
+  it('collapses same-model assistant retries even when foldSelected is missing', () => {
+    const userMessage = createMessage({
+      id: 'user-message',
+      assistantId: 'default',
+      topicId: 'topic-1',
+      role: 'user',
+      createdAt: 10
+    })
+    const assistantOld = createMessage({
+      id: 'assistant-old',
+      assistantId: 'default',
+      topicId: 'topic-1',
+      askId: 'user-message',
+      modelId: 'same-model',
+      createdAt: 20
+    })
+    const assistantNew = createMessage({
+      id: 'assistant-new',
+      assistantId: 'default',
+      topicId: 'topic-1',
+      askId: 'user-message',
+      modelId: 'same-model',
+      createdAt: 30
+    })
+
+    expect(
+      normalizePortableConversationMessages([userMessage, assistantOld, assistantNew]).map(message => message.id)
+    ).toEqual(['user-message', 'assistant-new'])
   })
 
   it('preserves local-only conversations while deleting entities previously seen from the same source device', () => {

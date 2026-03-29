@@ -280,6 +280,23 @@ function getPortableMessageSlotKey(message: Message) {
   return message.role === 'assistant' && message.askId ? `assistant:${message.askId}` : undefined
 }
 
+function getPortableAssistantModelKey(message: Message) {
+  return message.modelId || message.model?.id || message.assistantId
+}
+
+function shouldResolvePortableAssistantGroup(messages: Message[]) {
+  if (messages.length <= 1) {
+    return false
+  }
+
+  const hasFoldSelectionState = messages.some(message => typeof message.foldSelected === 'boolean')
+  if (hasFoldSelectionState) {
+    return true
+  }
+
+  return new Set(messages.map(getPortableAssistantModelKey)).size <= 1
+}
+
 function getMessageTimestamp(message: Message) {
   return message.updatedAt || message.createdAt
 }
@@ -299,8 +316,7 @@ function buildPortableMessageSlots(messages: Message[]) {
 
   const slots: Record<string, string> = {}
   for (const [slotKey, slotMessages] of grouped.entries()) {
-    const hasFoldSelectionState = slotMessages.some(message => typeof message.foldSelected === 'boolean')
-    if (!hasFoldSelectionState) {
+    if (!shouldResolvePortableAssistantGroup(slotMessages)) {
       continue
     }
 

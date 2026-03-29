@@ -247,4 +247,74 @@ describe('portableSyncState', () => {
     expect(result.messages.map(message => message.id).sort()).toEqual(['assistant-new', 'user-1'])
     expect(result.deletedMessageIds).toContain('assistant-old')
   })
+
+  it('suppresses same-model assistant retries even without explicit fold selection metadata', () => {
+    const topic = createTopic({ id: 'topic-1', assistantId: 'default' })
+    const userMessage = createMessage({
+      id: 'user-1',
+      assistantId: 'default',
+      topicId: topic.id,
+      role: 'user'
+    })
+    const oldAssistantMessage = createMessage({
+      id: 'assistant-old',
+      assistantId: 'default',
+      topicId: topic.id,
+      askId: 'user-1',
+      modelId: 'same-model',
+      createdAt: 10
+    })
+    const newAssistantMessage = createMessage({
+      id: 'assistant-new',
+      assistantId: 'default',
+      topicId: topic.id,
+      askId: 'user-1',
+      modelId: 'same-model',
+      createdAt: 20
+    })
+
+    const localStorage = createMemoryStorage()
+    localStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'mobile-a')
+    const remoteStorage = createMemoryStorage()
+    remoteStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'desktop-b')
+
+    const localState = preparePortableSyncState(
+      {
+        topics: [topic],
+        messages: [userMessage, oldAssistantMessage],
+        messageBlocks: [createBlock(userMessage.id), createBlock(oldAssistantMessage.id)]
+      },
+      localStorage
+    )
+    preparePortableSyncState(
+      {
+        topics: [topic],
+        messages: [userMessage, oldAssistantMessage],
+        messageBlocks: [createBlock(userMessage.id), createBlock(oldAssistantMessage.id)]
+      },
+      remoteStorage
+    )
+    const remoteState = preparePortableSyncState(
+      {
+        topics: [topic],
+        messages: [userMessage, newAssistantMessage],
+        messageBlocks: [createBlock(userMessage.id), createBlock(newAssistantMessage.id)]
+      },
+      remoteStorage
+    )
+
+    const result = resolvePortableSyncSnapshot({
+      currentTopics: [topic],
+      incomingTopics: [topic],
+      currentMessages: [userMessage, oldAssistantMessage],
+      incomingMessages: [userMessage, newAssistantMessage],
+      currentMessageBlocks: [createBlock(userMessage.id), createBlock(oldAssistantMessage.id)],
+      incomingMessageBlocks: [createBlock(userMessage.id), createBlock(newAssistantMessage.id)],
+      localState,
+      incomingSync: toPortableSyncMetadata(remoteState)
+    })
+
+    expect(result.messages.map(message => message.id).sort()).toEqual(['assistant-new', 'user-1'])
+    expect(result.deletedMessageIds).toContain('assistant-old')
+  })
 })
