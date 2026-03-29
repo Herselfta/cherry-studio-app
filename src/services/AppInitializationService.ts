@@ -183,85 +183,117 @@ export function resetAppInitializationState(): void {
   logger.info('App initialization state reset')
 }
 
+let currentTopicPromise: Promise<void> | null = null
+
 export async function ensureValidCurrentTopic(): Promise<void> {
-  const currentTopicId = await preferenceService.get('topic.current_id')
+  if (currentTopicPromise) {
+    return currentTopicPromise
+  }
 
-  const [topics, assistants] = await Promise.all([topicDatabase.getTopics(), assistantDatabase.getAllAssistants()])
-  const validAssistantIds = new Set(assistants.map(assistant => assistant.id))
-  const nextTopicId = resolveValidCurrentTopicId({
-    currentTopicId,
-    topics,
-    validAssistantIds
-  })
+  currentTopicPromise = (async () => {
+    try {
+      const currentTopicId = await preferenceService.get('topic.current_id')
 
-  if (nextTopicId) {
-    await topicService.switchToTopic(nextTopicId, { refreshFromDatabase: true })
-    if (currentTopicId === nextTopicId) {
-      logger.info(`Rehydrated current topic: ${nextTopicId}`)
-    } else {
-      logger.info(`Switched current topic to valid fallback: ${nextTopicId}`)
+      const [topics, assistants] = await Promise.all([topicDatabase.getTopics(), assistantDatabase.getAllAssistants()])
+      const validAssistantIds = new Set(assistants.map(assistant => assistant.id))
+      const nextTopicId = resolveValidCurrentTopicId({
+        currentTopicId,
+        topics,
+        validAssistantIds
+      })
+
+      if (nextTopicId) {
+        await topicService.switchToTopic(nextTopicId, { refreshFromDatabase: true })
+        if (currentTopicId === nextTopicId) {
+          logger.info(`Rehydrated current topic: ${nextTopicId}`)
+        } else {
+          logger.info(`Switched current topic to valid fallback: ${nextTopicId}`)
+        }
+        return
+      }
+
+      if (currentTopicId) {
+        logger.warn(`Current topic ${currentTopicId} is invalid after reconciliation, creating replacement topic`)
+      }
+
+      // No valid topics exist - create one with default assistant
+      const defaultAssistant = await getDefaultAssistant()
+      if (defaultAssistant) {
+        // We MUST await the creation here to ensure it's persisted before anything else runs
+        const newTopic = await topicService.createTopic(defaultAssistant)
+        await topicService.switchToTopic(newTopic.id)
+        logger.info(`Created new topic: ${newTopic.id}`)
+      }
+    } finally {
+      currentTopicPromise = null
     }
-    return
-  }
+  })()
 
-  if (currentTopicId) {
-    logger.warn(`Current topic ${currentTopicId} is invalid after reconciliation, creating replacement topic`)
-  }
-
-  // No valid topics exist - create one with default assistant
-  const defaultAssistant = await getDefaultAssistant()
-  if (defaultAssistant) {
-    const newTopic = await topicService.createTopic(defaultAssistant)
-    await topicService.switchToTopic(newTopic.id)
-    logger.info(`Created new topic: ${newTopic.id}`)
-  }
+  return currentTopicPromise
 }
 
+let migrationPromise: Promise<void> | null = null
+
 export async function runAppDataMigrations(): Promise<void> {
-  const currentVersion = await preferenceService.get('app.initialization_version')
-
-  if (currentVersion >= LATEST_APP_DATA_VERSION) {
-    logger.info(`App data already up to date at version ${currentVersion}`)
-
-    // Initialize ProviderService cache (loads default provider)
-    await providerService.initialize()
-
-    // Ensure a valid current topic exists
-    await ensureValidCurrentTopic()
-
-    return
+  if (migrationPromise) {
+    return migrationPromise
   }
 
-  const pendingMigrations = APP_DATA_MIGRATIONS.filter(migration => migration.version > currentVersion).sort(
-    (a, b) => a.version - b.version
-  )
-
-  logger.info(
-    `Preparing to run ${pendingMigrations.length} app data migration(s) from version ${currentVersion} to ${LATEST_APP_DATA_VERSION}`
-  )
-
-  for (const migration of pendingMigrations) {
-    logger.info(`Running app data migration v${migration.version}: ${migration.description}`)
-
+  migrationPromise = (async () => {
     try {
-      await migration.migrate()
-      await preferenceService.set('app.initialization_version', migration.version)
-      logger.info(`Completed app data migration v${migration.version}`)
+      const currentVersion = await preferenceService.get('app.initialization_version')
+
+      if (currentVersion >= LATEST_APP_DATA_VERSION) {
+        logger.info(`App data already up to date at version ${currentVersion}`)
+
+        // Initialize ProviderService cache (loads default provider)
+        await providerService.initialize()
+
+        // Ensure a valid current topic exists
+        await ensureValidCurrentTopic()
+
+        return
+      }
+
+      const pendingMigrations = APP_DATA_MIGRATIONS.filter(migration => migration.version > currentVersion).sort(
+        (a, b) => a.version - b.version
+      )
+
+      logger.info(
+        `Preparing to run ${pendingMigrations.length} app data migration(s) from version ${currentVersion} to ${LATEST_APP_DATA_VERSION}`
+      )
+
+      for (const migration of pendingMigrations) {
+        logger.info(`Running app data migration v${migration.version}: ${migration.description}`)
+
+        try {
+          await migration.migrate()
+          await preferenceService.set('app.initialization_version', migration.version)
+          logger.info(`Completed app data migration v${migration.version}`)
+        } catch (error) {
+          logger.error(`App data migration v${migration.version} failed`, error as Error)
+          throw error
+        }
+      }
+
+      logger.info(`App data migrations completed. Current version: ${LATEST_APP_DATA_VERSION}`)
+
+      // Initialize ProviderService cache (loads default provider)
+      await providerService.initialize()
+
+      // Ensure a valid current topic exists
+      await ensureValidCurrentTopic()
     } catch (error) {
-      logger.error(`App data migration v${migration.version} failed`, error as Error)
+      // Clear promise on failure so it can be retried if needed
+      migrationPromise = null
       throw error
     }
-  }
+  })()
 
-  logger.info(`App data migrations completed. Current version: ${LATEST_APP_DATA_VERSION}`)
-
-  // Initialize ProviderService cache (loads default provider)
-  await providerService.initialize()
-
-  // Ensure a valid current topic exists
-  await ensureValidCurrentTopic()
+  return migrationPromise
 }
 
 export function getAppDataVersion(): number {
   return LATEST_APP_DATA_VERSION
 }
+

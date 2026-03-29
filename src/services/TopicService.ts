@@ -348,20 +348,21 @@ export class TopicService {
 
     logger.info('Creating new topic (optimistic):', newTopic.id)
 
-    // Optimistically cache the new topic so subsequent switchToTopic calls
-    // can reuse it without hitting the database again.
+    // Optimistic: cache immediately
     this.addToCache(newTopic.id, newTopic)
     if (this.allTopicsCache.size > 0 || this.allTopicsCacheTimestamp !== null) {
       this.allTopicsCache.set(newTopic.id, newTopic)
     }
 
-    // Optimistic: return immediately
-    // Background: save to database
-    this.performTopicCreate(newTopic).catch(error => {
+    // Persist to database AND wait for it
+    try {
+      await this.performTopicCreate(newTopic)
+    } catch (error) {
       logger.error('Failed to persist new topic:', error as Error)
-      // Note: We don't rollback here because the topic has already been returned
-      // The UI has already updated. Consider implementing a retry mechanism.
-    })
+      // Note: Even if persistence fails, we have it in cache.
+      // In a real app we might want to cleanup the cache or retry,
+      // but the current service structure favors optimistic caches.
+    }
 
     return newTopic
   }

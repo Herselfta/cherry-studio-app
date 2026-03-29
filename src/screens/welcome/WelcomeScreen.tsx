@@ -22,16 +22,23 @@ export default function WelcomeScreen() {
   const { t } = useTranslation()
 
   const handleStart = async () => {
-    const defaultAssistant = await getDefaultAssistant()
-    const newTopic = await topicService.createTopic(defaultAssistant)
+    // Prefer using an existing topic if one was already created during auto-initialization
+    // or through background synchronization, rather than blindly creating another.
+    let topicToUse = await topicService.getNewestTopic()
+
+    if (!topicToUse) {
+      const defaultAssistant = await getDefaultAssistant()
+      topicToUse = await topicService.createTopic(defaultAssistant)
+    }
+
     navigation.navigate('HomeScreen', {
       screen: 'Home',
       params: {
         screen: 'ChatScreen',
-        params: { topicId: newTopic.id }
+        params: { topicId: topicToUse.id }
       }
     })
-    await switchTopic(newTopic.id)
+    await switchTopic(topicToUse.id)
     await setWelcomeShown(true)
   }
 
