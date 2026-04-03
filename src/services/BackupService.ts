@@ -737,6 +737,17 @@ export function transformBackupData(data: string): {
   if (indexedDb.topics && indexedDb.message_blocks) {
     logger.info('Processing topics and messages...')
     const { systemAssistants, externalAssistants } = normalizeAssistantsFromBackup(reduxData.assistants, reduxData.llm)
+    const parseTimestamp = (dateVal: any, fallback: number): number => {
+      if (!dateVal) return fallback
+      if (typeof dateVal === 'number') return dateVal
+      if (typeof dateVal === 'string') {
+        const asNum = Number(dateVal)
+        if (!isNaN(asNum) && asNum > 0) return asNum
+      }
+      const t = new Date(dateVal).getTime()
+      return isNaN(t) ? fallback : t
+    }
+
     const topicsFromReduxMap = new Map<string, Topic>()
 
     for (const assistant of [...systemAssistants, ...externalAssistants]) {
@@ -753,8 +764,13 @@ export function transformBackupData(data: string): {
     // 从 IndexedDB 提取所有 topics 和 messages
     for (const topic of indexedDb.topics) {
       if (topic.messages && topic.messages.length > 0) {
-        messagesByTopicId[topic.id] = topic.messages
-        allMessages.push(...topic.messages)
+        const messagesWithFixedDates = topic.messages.map(msg => ({
+          ...msg,
+          createdAt: parseTimestamp(msg.createdAt, Date.now()),
+          updatedAt: msg.updatedAt ? parseTimestamp(msg.updatedAt, Date.now()) : undefined
+        }))
+        messagesByTopicId[topic.id] = messagesWithFixedDates
+        allMessages.push(...messagesWithFixedDates)
       }
     }
 
@@ -775,8 +791,8 @@ export function transformBackupData(data: string): {
           id: indexedTopic.id,
           assistantId: reduxTopic?.assistantId ?? 'default',
           name: reduxTopic?.name ?? 'Untitled Topic',
-          createdAt: reduxTopic?.createdAt ?? Date.now(),
-          updatedAt: reduxTopic?.updatedAt ?? Date.now(),
+          createdAt: parseTimestamp(reduxTopic?.createdAt, Date.now()),
+          updatedAt: reduxTopic?.updatedAt ? parseTimestamp(reduxTopic.updatedAt, Date.now()) : parseTimestamp(reduxTopic?.createdAt, Date.now()),
           isLoading: reduxTopic?.isLoading ?? false
         } as Topic
       })
@@ -785,7 +801,11 @@ export function transformBackupData(data: string): {
     topicsFromReduxMap.clear()
     indexedDbData.messages = allMessages
     indexedDbData.topics = topicsWithMessages
-    indexedDbData.message_blocks = indexedDb.message_blocks
+    indexedDbData.message_blocks = (indexedDb.message_blocks || []).map(block => ({
+      ...block,
+      createdAt: parseTimestamp(block.createdAt, Date.now()),
+      updatedAt: block.updatedAt ? parseTimestamp(block.updatedAt, Date.now()) : undefined
+    }))
     logger.info('Backup data transformation completed')
   }
 
