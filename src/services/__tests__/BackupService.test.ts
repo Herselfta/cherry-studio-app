@@ -259,6 +259,62 @@ describe('BackupService.transformBackupData', () => {
     ])
   })
 
+  it('extracts portable sync lineage from desktop migration payloads', () => {
+    const backupData = JSON.stringify({
+      localStorage: {
+        'persist:cherry-studio': JSON.stringify({
+          assistants: JSON.stringify({
+            defaultAssistant: { id: 'default', topics: [] },
+            assistants: []
+          }),
+          llm: JSON.stringify({ providers: [] }),
+          websearch: JSON.stringify({ providers: [] }),
+          settings: JSON.stringify({
+            userName: 'Desktop User',
+            theme: 'dark'
+          })
+        })
+      },
+      indexedDB: {
+        topics: [],
+        message_blocks: [],
+        settings: []
+      },
+      portableSync: {
+        replicaId: 'desktop-a',
+        lamport: 7,
+        frontier: { 'desktop-a': 7 },
+        entityVersions: {
+          topics: { 'topic-1': { replicaId: 'desktop-a', lamport: 5 } },
+          messages: {},
+          blocks: {}
+        },
+        messageSlots: {},
+        tombstones: {
+          topics: { 'topic-deleted': { replicaId: 'desktop-a', lamport: 6 } },
+          messages: {},
+          blocks: {}
+        }
+      }
+    })
+
+    const parsed = transformBackupData(backupData)
+
+    expect(parsed.portableSync).toEqual(
+      expect.objectContaining({
+        replicaId: 'desktop-a',
+        lamport: 7,
+        tombstones: expect.objectContaining({
+          topics: expect.objectContaining({
+            'topic-deleted': expect.objectContaining({
+              lamport: 6
+            })
+          })
+        })
+      })
+    )
+  })
+
   it('prefers desktop default assistant payload over seeded mobile default when restoring migration backups', () => {
     const normalized = normalizeAssistantsFromBackup({
       defaultAssistant: {

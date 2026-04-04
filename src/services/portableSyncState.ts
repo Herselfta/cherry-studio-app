@@ -74,6 +74,10 @@ export type ResolvePortableSyncSnapshotResult = {
   syncState: PortableSyncState
 }
 
+function hasTrackedEntries(versionMap: PortableSyncVersionMap) {
+  return Object.keys(versionMap).length > 0
+}
+
 function createEmptyEntityVersions(): PortableSyncEntityVersions {
   return {
     topics: {},
@@ -101,6 +105,19 @@ function createEmptyPortableSyncState(replicaId: string): PortableSyncState {
     tombstones: createEmptyEntityVersions(),
     fingerprints: createEmptyFingerprints()
   }
+}
+
+export function hasPortableSyncHistory(state: PortableSyncState) {
+  return Boolean(
+    state.lamport > 0 ||
+      hasTrackedEntries(state.entityVersions.topics) ||
+      hasTrackedEntries(state.entityVersions.messages) ||
+      hasTrackedEntries(state.entityVersions.blocks) ||
+      hasTrackedEntries(state.tombstones.topics) ||
+      hasTrackedEntries(state.tombstones.messages) ||
+      hasTrackedEntries(state.tombstones.blocks) ||
+      Object.keys(state.messageSlots).length > 0
+  )
 }
 
 function normalizeVersion(value: PortableSyncVersion | undefined): PortableSyncVersion | undefined {
@@ -342,6 +359,123 @@ function cloneState(state: PortableSyncState): PortableSyncState {
     tombstones: normalizeEntityVersions(state.tombstones),
     fingerprints: normalizeFingerprints(state.fingerprints)
   }
+}
+
+function createPortableSyncStateFromMetadata(
+  snapshot: PortableSyncSnapshot,
+  incomingSync: PortableSyncMetadata,
+  targetStorage: MobileSyncStorage
+) {
+  const replicaId = getOrCreateMobileSyncSourceDeviceId(targetStorage)
+  const nextState: PortableSyncState = {
+    replicaId,
+    lamport: Math.max(incomingSync.lamport, ...Object.values(incomingSync.frontier)),
+    frontier: mergeFrontier({ [replicaId]: 0 }, incomingSync.frontier),
+    entityVersions: normalizeEntityVersions(incomingSync.entityVersions),
+    messageSlots: normalizeMessageSlots(incomingSync.messageSlots),
+    tombstones: normalizeEntityVersions(incomingSync.tombstones),
+    fingerprints: createEmptyFingerprints()
+  }
+  const activeTopicIds = new Set(
+    snapshot.topics
+      .filter(topic => comparePortableSyncVersions(nextState.entityVersions.topics[topic.id], nextState.tombstones.topics[topic.id]) > 0)
+      .map(topic => topic.id)
+  )
+  const activeMessages = snapshot.messages.filter(
+    message =>
+      activeTopicIds.has(message.topicId) &&
+      comparePortableSyncVersions(nextState.entityVersions.messages[message.id], nextState.tombstones.messages[message.id]) > 0
+  )
+  const activeMessageIds = new Set(activeMessages.map(message => message.id))
+  const activeBlocks = snapshot.messageBlocks.filter(
+    block =>
+      activeMessageIds.has(block.messageId) &&
+      comparePortableSyncVersions(nextState.entityVersions.blocks[block.id], nextState.tombstones.blocks[block.id]) > 0
+  )
+  const currentSlots = buildPortableMessageSlots(activeMessages)
+  const trackedSlotKeys = new Set<string>([...Object.keys(nextState.messageSlots), ...Object.keys(currentSlots)])
+
+  nextState.fingerprints = {
+    topics: Object.fromEntries(snapshot.topics.filter(topic => activeTopicIds.has(topic.id)).map(topic => [topic.id, fingerprintTopic(topic)])),
+    messages: Object.fromEntries(activeMessages.map(message => [message.id, fingerprintMessage(message)])),
+    blocks: Object.fromEntries(activeBlocks.map(block => [block.id, fingerprintMessageBlock(block)])),
+    messageSlots: Object.fromEntries(
+      [...trackedSlotKeys].map(slotKey => [slotKey, currentSlots[slotKey] || nextState.messageSlots[slotKey]?.messageId || ''])
+    )
+  }
+
+  return nextState
+}
+
+export function seedPortableSyncState(
+  snapshot: PortableSyncSnapshot,
+  incomingSync: PortableSyncMetadata,
+  targetStorage: MobileSyncStorage = storage
+) {
+  const state = createPortableSyncStateFromMetadata(snapshot, incomingSync, targetStorage)
+  writePortableSyncState(state, targetStorage)
+  return state
+}
+
+export function bootstrapPortableSyncState(
+  snapshot: PortableSyncSnapshot,
+  incomingSync: PortableSyncMetadata,
+  targetStorage: MobileSyncStorage = storage
+) {
+  const state = createPortableSyncStateFromMetadata(snapshot, incomingSync, targetStorage)
+  const remoteTopicIds = new Set([
+    ...Object.keys(state.entityVersions.topics),
+    ...Object.keys(state.tombstones.topics)
+  ])
+  const remoteMessageIds = new Set([
+    ...Object.keys(state.entityVersions.messages),
+    ...Object.keys(state.tombstones.messages)
+  ])
+  const remoteBlockIds = new Set([
+    ...Object.keys(state.entityVersions.blocks),
+    ...Object.keys(state.tombstones.blocks)
+  ])
+  const localOnlyTopics = snapshot.topics.filter(topic => !remoteTopicIds.has(topic.id))
+  const localOnlyMessages = snapshot.messages.filter(message => !remoteMessageIds.has(message.id))
+  const localOnlyBlocks = snapshot.messageBlocks.filter(block => !remoteBlockIds.has(block.id))
+
+  reconcileVersionedSet(
+    localOnlyTopics,
+    state.entityVersions.topics,
+    state.tombstones.topics,
+    state.fingerprints.topics,
+    fingerprintTopic,
+    state
+  )
+  reconcileVersionedSet(
+    localOnlyMessages,
+    state.entityVersions.messages,
+    state.tombstones.messages,
+    state.fingerprints.messages,
+    fingerprintMessage,
+    state
+  )
+  reconcileVersionedSet(
+    localOnlyBlocks,
+    state.entityVersions.blocks,
+    state.tombstones.blocks,
+    state.fingerprints.blocks,
+    fingerprintMessageBlock,
+    state
+  )
+
+  const localOnlySlots = buildPortableMessageSlots(localOnlyMessages)
+  for (const [slotKey, messageId] of Object.entries(localOnlySlots)) {
+    state.messageSlots[slotKey] = {
+      messageId,
+      version: nextPortableSyncVersion(state)
+    }
+    state.fingerprints.messageSlots[slotKey] = messageId
+  }
+
+  state.frontier[state.replicaId] = Math.max(state.frontier[state.replicaId] || 0, state.lamport)
+  writePortableSyncState(state, targetStorage)
+  return state
 }
 
 function reconcileVersionedSet<T extends { id: string }>(

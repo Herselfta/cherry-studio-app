@@ -2,7 +2,13 @@ import type { Topic } from '@/types/assistant'
 import { AssistantMessageStatus, type Message, MessageBlockStatus, MessageBlockType } from '@/types/message'
 
 import { MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY } from '../mobileSyncLedger'
-import { preparePortableSyncState, resolvePortableSyncSnapshot, toPortableSyncMetadata } from '../portableSyncState'
+import {
+  bootstrapPortableSyncState,
+  preparePortableSyncState,
+  resolvePortableSyncSnapshot,
+  seedPortableSyncState,
+  toPortableSyncMetadata
+} from '../portableSyncState'
 
 const mockModuleStorageState = new Map<string, string>()
 
@@ -161,6 +167,113 @@ describe('portableSyncState', () => {
         messageBlocks: []
       },
       remoteStorage
+    )
+
+    const result = resolvePortableSyncSnapshot({
+      currentTopics: [sharedTopic],
+      incomingTopics: [],
+      currentMessages: [],
+      incomingMessages: [],
+      currentMessageBlocks: [],
+      incomingMessageBlocks: [],
+      localState,
+      incomingSync: toPortableSyncMetadata(remoteDeletionState)
+    })
+
+    expect(result.topics).toEqual([])
+    expect(result.deletedTopicIds).toEqual(['shared-topic'])
+  })
+
+  it('bootstraps migration-seeded topics against incoming tombstones without resurrecting them', () => {
+    const sharedTopic = createTopic({ id: 'shared-topic', assistantId: 'default' })
+    const localStorage = createMemoryStorage()
+    localStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'mobile-a')
+    const remoteStorage = createMemoryStorage()
+    remoteStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'desktop-b')
+
+    preparePortableSyncState(
+      {
+        topics: [sharedTopic],
+        messages: [],
+        messageBlocks: []
+      },
+      remoteStorage
+    )
+    const remoteDeletionState = preparePortableSyncState(
+      {
+        topics: [],
+        messages: [],
+        messageBlocks: []
+      },
+      remoteStorage
+    )
+    const localState = bootstrapPortableSyncState(
+      {
+        topics: [sharedTopic],
+        messages: [],
+        messageBlocks: []
+      },
+      toPortableSyncMetadata(remoteDeletionState),
+      localStorage
+    )
+
+    const result = resolvePortableSyncSnapshot({
+      currentTopics: [sharedTopic],
+      incomingTopics: [],
+      currentMessages: [],
+      incomingMessages: [],
+      currentMessageBlocks: [],
+      incomingMessageBlocks: [],
+      localState,
+      incomingSync: toPortableSyncMetadata(remoteDeletionState)
+    })
+
+    expect(result.topics).toEqual([])
+    expect(result.deletedTopicIds).toEqual(['shared-topic'])
+  })
+
+  it('seeds restored sync lineage so later remote tombstones can delete migrated topics', () => {
+    const sharedTopic = createTopic({ id: 'shared-topic', assistantId: 'default' })
+    const localStorage = createMemoryStorage()
+    localStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'mobile-a')
+    const remoteStorage = createMemoryStorage()
+    remoteStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'desktop-b')
+
+    const remoteSeedState = preparePortableSyncState(
+      {
+        topics: [sharedTopic],
+        messages: [],
+        messageBlocks: []
+      },
+      remoteStorage
+    )
+
+    seedPortableSyncState(
+      {
+        topics: [sharedTopic],
+        messages: [],
+        messageBlocks: []
+      },
+      toPortableSyncMetadata(remoteSeedState),
+      localStorage
+    )
+
+    const remoteDeletionState = preparePortableSyncState(
+      {
+        topics: [],
+        messages: [],
+        messageBlocks: []
+      },
+      remoteStorage
+    )
+    const localState = preparePortableSyncState(
+      {
+        topics: [sharedTopic],
+        messages: [],
+        messageBlocks: []
+      },
+      localStorage,
+      toPortableSyncMetadata(remoteDeletionState).frontier
     )
 
     const result = resolvePortableSyncSnapshot({

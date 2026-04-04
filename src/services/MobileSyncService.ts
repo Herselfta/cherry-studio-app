@@ -29,8 +29,11 @@ import {
   type PortableSyncImageAsset
 } from './mobileSyncUtils'
 import {
+  bootstrapPortableSyncState,
+  hasPortableSyncHistory,
   type PortableSyncMetadata,
   preparePortableSyncState,
+  readPortableSyncState,
   resolvePortableSyncSnapshot,
   toPortableSyncMetadata,
   writePortableSyncState
@@ -418,15 +421,27 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       messageBlockDatabase.getAllBlocks(),
       assistantDatabase.getAllAssistants()
     ])
-    const localSyncState = preparePortableSyncState(
-      {
-        topics: currentTopics,
-        messages: currentMessages,
-        messageBlocks: currentMessageBlocks
-      },
-      undefined,
-      parsed.sync!.frontier
-    )
+    const currentSnapshot = {
+      topics: currentTopics,
+      messages: currentMessages,
+      messageBlocks: currentMessageBlocks
+    }
+    const existingSyncState = readPortableSyncState()
+    const isBootstrapImport = !hasPortableSyncHistory(existingSyncState)
+    const localSyncState = isBootstrapImport
+      ? bootstrapPortableSyncState(currentSnapshot, parsed.sync!)
+      : preparePortableSyncState(currentSnapshot, undefined, parsed.sync!.frontier)
+
+    if (isBootstrapImport) {
+      logger.info('Bootstrapped portable sync lineage from incoming mobile sync payload', {
+        sourceDeviceId: parsed.sourceDeviceId,
+        replicaId: parsed.sync?.replicaId,
+        topicCount: currentTopics.length,
+        messageCount: currentMessages.length,
+        blockCount: currentMessageBlocks.length
+      })
+    }
+
     const resolvedConversation = resolvePortableSyncSnapshot({
       currentTopics,
       incomingTopics: normalizedIncomingTopics,

@@ -37,6 +37,7 @@ import { storage } from '@/utils'
 import { resetAppInitializationState, runAppDataMigrations } from './AppInitializationService'
 import { assistantService } from './AssistantService'
 import { deleteFiles, writeBase64File } from './FileService'
+import { type PortableSyncMetadata,seedPortableSyncState } from './portableSyncState'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
 import {
@@ -110,6 +111,21 @@ function sanitizePortableBackupSettings<T extends Record<string, unknown>>(setti
 
 function isPortableImageAsset(value: unknown): value is PortableImageAsset {
   return !!value && typeof value === 'object' && 'fileId' in value && 'data' in value
+}
+
+function isPortableSyncMetadata(value: unknown): value is PortableSyncMetadata {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      typeof (value as PortableSyncMetadata).replicaId === 'string' &&
+      typeof (value as PortableSyncMetadata).lamport === 'number' &&
+      (value as PortableSyncMetadata).frontier &&
+      typeof (value as PortableSyncMetadata).frontier === 'object' &&
+      (value as PortableSyncMetadata).entityVersions &&
+      typeof (value as PortableSyncMetadata).entityVersions === 'object' &&
+      (value as PortableSyncMetadata).tombstones &&
+      typeof (value as PortableSyncMetadata).tombstones === 'object'
+  )
 }
 
 export async function materializePortableImageBlocks(
@@ -589,6 +605,8 @@ async function restoreParsedBackupData(data: string, onProgress: OnProgressCallb
   logger.info('Parsing and transforming backup data...')
   let parsedData = transformBackupData(data)
   const portableLanguage = parsedData.portableLanguage
+  const portableSync = parsedData.portableSync
+  const backupSource = parsedData.source
 
   logger.info('Restoring Redux data...')
   await restoreReduxData(parsedData.reduxData, onProgress, dispatch, parsedData.webDavConfig)
@@ -614,6 +632,33 @@ async function restoreParsedBackupData(data: string, onProgress: OnProgressCallb
   await runAppDataMigrations()
 
   resetAppInitializationState()
+
+  if (portableSync) {
+    const [topics, messages, messageBlocks] = await Promise.all([
+      topicDatabase.getTopics(),
+      messageDatabase.getAllMessages(),
+      messageBlockDatabase.getAllBlocks()
+    ])
+    const messageIds = new Set(messages.map(message => message.id))
+    const syncedMessageBlocks = messageBlocks.filter(block => messageIds.has(block.messageId))
+    const syncState = seedPortableSyncState(
+      {
+        topics,
+        messages,
+        messageBlocks: syncedMessageBlocks
+      },
+      portableSync
+    )
+
+    logger.info('Seeded portable sync lineage from restored backup', {
+      source: backupSource,
+      replicaId: portableSync.replicaId,
+      localReplicaId: syncState.replicaId,
+      topicCount: topics.length,
+      messageCount: messages.length,
+      blockCount: syncedMessageBlocks.length
+    })
+  }
 
   if (portableLanguage) {
     // Desktop migration payloads may carry desktop-style locale tags such as
@@ -670,6 +715,7 @@ export function transformBackupData(data: string): {
   reduxData: ExportReduxData
   indexedData: ExportIndexedData
   portableImageAssets: PortableImageAsset[]
+  portableSync?: PortableSyncMetadata
   appInitializationVersion?: number
   webDavConfig?: WebDavConfig | null
   portableLanguage?: LanguageVarious
@@ -693,6 +739,7 @@ export function transformBackupData(data: string): {
   const portableImageAssets = Array.isArray(orginalData.portableImageAssets)
     ? orginalData.portableImageAssets.filter(isPortableImageAsset)
     : []
+  const portableSync = isPortableSyncMetadata(orginalData.portableSync) ? orginalData.portableSync : undefined
 
   // 从 IndexedDB 提取 topics（这是数据的真实来源，包含所有 topics）
   const indexedDb: ImportIndexedData = orginalData.indexedDB
@@ -813,6 +860,7 @@ export function transformBackupData(data: string): {
     reduxData: reduxData,
     indexedData: indexedDbData,
     portableImageAssets,
+    portableSync,
     appInitializationVersion,
     webDavConfig,
     portableLanguage,
