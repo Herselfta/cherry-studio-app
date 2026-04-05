@@ -291,6 +291,83 @@ describe('portableSyncState', () => {
     expect(result.deletedTopicIds).toEqual(['shared-topic'])
   })
 
+  it('prunes remotely tracked empty ghost topics while keeping local-only empty topics', () => {
+    const sharedTopic = createTopic({ id: 'shared-topic', assistantId: 'default', name: 'shared topic' })
+    const locallyRetitledSharedTopic = createTopic({
+      id: 'shared-topic',
+      assistantId: 'default',
+      name: 'locally retitled topic',
+      updatedAt: 999
+    })
+    const localOnlyTopic = createTopic({ id: 'local-only-topic', assistantId: 'default', name: 'local empty topic' })
+    const sharedMessage = createMessage({
+      id: 'shared-message',
+      assistantId: 'default',
+      topicId: 'shared-topic',
+      role: 'user'
+    })
+    const sharedBlock = createBlock(sharedMessage.id)
+    const localStorage = createMemoryStorage()
+    localStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'mobile-a')
+    const remoteStorage = createMemoryStorage()
+    remoteStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'desktop-b')
+
+    const remoteSeedState = preparePortableSyncState(
+      {
+        topics: [sharedTopic],
+        messages: [sharedMessage],
+        messageBlocks: [sharedBlock]
+      },
+      remoteStorage
+    )
+
+    seedPortableSyncState(
+      {
+        topics: [sharedTopic],
+        messages: [sharedMessage],
+        messageBlocks: [sharedBlock]
+      },
+      toPortableSyncMetadata(remoteSeedState),
+      localStorage
+    )
+
+    const remoteDeletionState = preparePortableSyncState(
+      {
+        topics: [],
+        messages: [],
+        messageBlocks: []
+      },
+      remoteStorage
+    )
+
+    const localState = preparePortableSyncState(
+      {
+        topics: [locallyRetitledSharedTopic, localOnlyTopic],
+        messages: [sharedMessage],
+        messageBlocks: [sharedBlock]
+      },
+      localStorage,
+      toPortableSyncMetadata(remoteDeletionState).frontier
+    )
+
+    const result = resolvePortableSyncSnapshot({
+      currentTopics: [locallyRetitledSharedTopic, localOnlyTopic],
+      incomingTopics: [],
+      currentMessages: [sharedMessage],
+      incomingMessages: [],
+      currentMessageBlocks: [sharedBlock],
+      incomingMessageBlocks: [],
+      localState,
+      incomingSync: toPortableSyncMetadata(remoteDeletionState)
+    })
+
+    expect(result.topics).toEqual([expect.objectContaining({ id: 'local-only-topic' })])
+    expect(result.deletedTopicIds).toContain('shared-topic')
+    expect(result.deletedTopicIds).not.toContain('local-only-topic')
+    expect(result.deletedMessageIds).toContain('shared-message')
+    expect(result.deletedBlockIds).toContain(sharedBlock.id)
+  })
+
   it('ignores topic versions that no longer have a normalized incoming topic entity', () => {
     const remoteStorage = createMemoryStorage()
     remoteStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'desktop-b')

@@ -110,13 +110,13 @@ function createEmptyPortableSyncState(replicaId: string): PortableSyncState {
 export function hasPortableSyncHistory(state: PortableSyncState) {
   return Boolean(
     state.lamport > 0 ||
-      hasTrackedEntries(state.entityVersions.topics) ||
-      hasTrackedEntries(state.entityVersions.messages) ||
-      hasTrackedEntries(state.entityVersions.blocks) ||
-      hasTrackedEntries(state.tombstones.topics) ||
-      hasTrackedEntries(state.tombstones.messages) ||
-      hasTrackedEntries(state.tombstones.blocks) ||
-      Object.keys(state.messageSlots).length > 0
+    hasTrackedEntries(state.entityVersions.topics) ||
+    hasTrackedEntries(state.entityVersions.messages) ||
+    hasTrackedEntries(state.entityVersions.blocks) ||
+    hasTrackedEntries(state.tombstones.topics) ||
+    hasTrackedEntries(state.tombstones.messages) ||
+    hasTrackedEntries(state.tombstones.blocks) ||
+    Object.keys(state.messageSlots).length > 0
   )
 }
 
@@ -378,13 +378,22 @@ function createPortableSyncStateFromMetadata(
   }
   const activeTopicIds = new Set(
     snapshot.topics
-      .filter(topic => comparePortableSyncVersions(nextState.entityVersions.topics[topic.id], nextState.tombstones.topics[topic.id]) > 0)
+      .filter(
+        topic =>
+          comparePortableSyncVersions(
+            nextState.entityVersions.topics[topic.id],
+            nextState.tombstones.topics[topic.id]
+          ) > 0
+      )
       .map(topic => topic.id)
   )
   const activeMessages = snapshot.messages.filter(
     message =>
       activeTopicIds.has(message.topicId) &&
-      comparePortableSyncVersions(nextState.entityVersions.messages[message.id], nextState.tombstones.messages[message.id]) > 0
+      comparePortableSyncVersions(
+        nextState.entityVersions.messages[message.id],
+        nextState.tombstones.messages[message.id]
+      ) > 0
   )
   const activeMessageIds = new Set(activeMessages.map(message => message.id))
   const activeBlocks = snapshot.messageBlocks.filter(
@@ -396,11 +405,16 @@ function createPortableSyncStateFromMetadata(
   const trackedSlotKeys = new Set<string>([...Object.keys(nextState.messageSlots), ...Object.keys(currentSlots)])
 
   nextState.fingerprints = {
-    topics: Object.fromEntries(snapshot.topics.filter(topic => activeTopicIds.has(topic.id)).map(topic => [topic.id, fingerprintTopic(topic)])),
+    topics: Object.fromEntries(
+      snapshot.topics.filter(topic => activeTopicIds.has(topic.id)).map(topic => [topic.id, fingerprintTopic(topic)])
+    ),
     messages: Object.fromEntries(activeMessages.map(message => [message.id, fingerprintMessage(message)])),
     blocks: Object.fromEntries(activeBlocks.map(block => [block.id, fingerprintMessageBlock(block)])),
     messageSlots: Object.fromEntries(
-      [...trackedSlotKeys].map(slotKey => [slotKey, currentSlots[slotKey] || nextState.messageSlots[slotKey]?.messageId || ''])
+      [...trackedSlotKeys].map(slotKey => [
+        slotKey,
+        currentSlots[slotKey] || nextState.messageSlots[slotKey]?.messageId || ''
+      ])
     )
   }
 
@@ -423,18 +437,12 @@ export function bootstrapPortableSyncState(
   targetStorage: MobileSyncStorage = storage
 ) {
   const state = createPortableSyncStateFromMetadata(snapshot, incomingSync, targetStorage)
-  const remoteTopicIds = new Set([
-    ...Object.keys(state.entityVersions.topics),
-    ...Object.keys(state.tombstones.topics)
-  ])
+  const remoteTopicIds = new Set([...Object.keys(state.entityVersions.topics), ...Object.keys(state.tombstones.topics)])
   const remoteMessageIds = new Set([
     ...Object.keys(state.entityVersions.messages),
     ...Object.keys(state.tombstones.messages)
   ])
-  const remoteBlockIds = new Set([
-    ...Object.keys(state.entityVersions.blocks),
-    ...Object.keys(state.tombstones.blocks)
-  ])
+  const remoteBlockIds = new Set([...Object.keys(state.entityVersions.blocks), ...Object.keys(state.tombstones.blocks)])
   const localOnlyTopics = snapshot.topics.filter(topic => !remoteTopicIds.has(topic.id))
   const localOnlyMessages = snapshot.messages.filter(message => !remoteMessageIds.has(message.id))
   const localOnlyBlocks = snapshot.messageBlocks.filter(block => !remoteBlockIds.has(block.id))
@@ -665,6 +673,36 @@ function buildBlockMap(
   return { result, acceptedVersions }
 }
 
+function pruneGhostTopics(
+  topicMap: Map<string, Topic>,
+  topicVersions: PortableSyncVersionMap,
+  messages: Map<string, Message>,
+  incomingSync: PortableSyncMetadata,
+  localReplicaId: string
+) {
+  const topicIdsWithMessages = new Set(Array.from(messages.values()).map(message => message.topicId))
+
+  for (const [topicId] of topicMap.entries()) {
+    if (topicIdsWithMessages.has(topicId)) {
+      continue
+    }
+
+    const topicVersion = topicVersions[topicId]
+    const touchedByIncomingReplica = Boolean(
+      incomingSync.entityVersions.topics[topicId] || incomingSync.tombstones.topics[topicId]
+    )
+    const isLocalOnlyUntouchedTopic =
+      Boolean(topicVersion) && topicVersion.replicaId === localReplicaId && !touchedByIncomingReplica
+
+    if (isLocalOnlyUntouchedTopic) {
+      continue
+    }
+
+    topicMap.delete(topicId)
+    delete topicVersions[topicId]
+  }
+}
+
 export function resolvePortableSyncSnapshot({
   currentTopics,
   incomingTopics,
@@ -775,6 +813,8 @@ export function resolvePortableSyncSnapshot({
     mergedMessages.delete(messageId)
     delete messageVersions[messageId]
   }
+
+  pruneGhostTopics(topicMap, topicVersions, mergedMessages, incomingSync, localState.replicaId)
 
   const finalMessageIds = new Set(mergedMessages.keys())
   const { result: mergedBlocks, acceptedVersions: blockVersions } = buildBlockMap(
