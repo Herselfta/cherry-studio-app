@@ -252,6 +252,14 @@ function buildPortableSyncExportSamples<T extends { id: string }>(
   }))
 }
 
+function stringifyPortableSyncDebug(value: unknown) {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return '[unserializable]'
+  }
+}
+
 export async function exportMobileSyncPayload(): Promise<string> {
   const [providers, websearchProviders, externalAssistants, topics, messages, messageBlocks] = await Promise.all([
     providerDatabase.getAllProviders(),
@@ -343,6 +351,55 @@ export async function exportMobileSyncPayload(): Promise<string> {
     tombstoneMessageIds: Object.keys(portableSyncState.tombstones.messages).slice(0, 8),
     tombstoneBlockIds: Object.keys(portableSyncState.tombstones.blocks).slice(0, 8)
   })
+  logger.info(
+    `Exporting mobile sync payload summary ${stringifyPortableSyncDebug({
+      version: MOBILE_SYNC_SCHEMA_VERSION,
+      sourcePlatform: 'mobile',
+      sourceDeviceId,
+      lamport: portableSyncState.lamport,
+      rawTopicCount: topics.length,
+      normalizedTopicCount: normalizedTopics.length,
+      rawMessageCount: messages.length,
+      normalizedMessageCount: normalizedMessages.length,
+      rawBlockCount: messageBlocks.length,
+      normalizedBlockCount: normalizedMessageBlocks.length,
+      topicSamples: buildPortableSyncExportSamples(
+        normalizedTopics,
+        portableSyncState.entityVersions.topics,
+        portableSyncState.tombstones.topics,
+        topic => ({
+          name: topic.name,
+          assistantId: topic.assistantId,
+          updatedAt: topic.updatedAt
+        })
+      ),
+      messageSamples: buildPortableSyncExportSamples(
+        normalizedMessages,
+        portableSyncState.entityVersions.messages,
+        portableSyncState.tombstones.messages,
+        message => ({
+          topicId: message.topicId,
+          role: message.role,
+          updatedAt: message.updatedAt,
+          content: previewPortableValue((message as Message & { content?: string }).content)
+        })
+      ),
+      blockSamples: buildPortableSyncExportSamples(
+        normalizedMessageBlocks,
+        portableSyncState.entityVersions.blocks,
+        portableSyncState.tombstones.blocks,
+        block => ({
+          messageId: block.messageId,
+          type: block.type,
+          updatedAt: block.updatedAt,
+          content: previewPortableValue((block as MessageBlock & { content?: string }).content)
+        })
+      ),
+      tombstoneTopicIds: Object.keys(portableSyncState.tombstones.topics).slice(0, 8),
+      tombstoneMessageIds: Object.keys(portableSyncState.tombstones.messages).slice(0, 8),
+      tombstoneBlockIds: Object.keys(portableSyncState.tombstones.blocks).slice(0, 8)
+    })}`
+  )
 
   const { defaultAssistant: syncDefaultAssistant, assistants: syncAssistants } = buildMobileSyncAssistantPayload({
     assistants: mobileSyncAssistants,
