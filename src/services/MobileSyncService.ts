@@ -450,7 +450,8 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       currentMessageBlocks,
       incomingMessageBlocks: restoredMessageBlocks,
       localState: localSyncState,
-      incomingSync: parsed.sync!
+      incomingSync: parsed.sync!,
+      preferIncomingOnEqualVersion: isBootstrapImport
     })
     logger.info('Resolved mobile sync conversation snapshot', {
       sourceDeviceId: parsed.sourceDeviceId,

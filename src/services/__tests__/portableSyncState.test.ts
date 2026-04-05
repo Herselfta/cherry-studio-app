@@ -254,6 +254,63 @@ describe('portableSyncState', () => {
     expect(result.deletedTopicIds).toEqual(['shared-topic'])
   })
 
+  it('prefers incoming tracked topic metadata on version tie during bootstrap recovery', () => {
+    const localStorage = createMemoryStorage()
+    localStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'mobile-a')
+    const remoteStorage = createMemoryStorage()
+    remoteStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'desktop-b')
+
+    const localTopic = createTopic({
+      id: 'shared-topic',
+      assistantId: 'default',
+      name: 'mobile stale title'
+    })
+    const remoteTopic = createTopic({
+      id: 'shared-topic',
+      assistantId: 'default',
+      name: 'desktop newer title'
+    })
+    const sharedMessage = createMessage({
+      id: 'shared-message',
+      assistantId: 'default',
+      topicId: 'shared-topic',
+      role: 'user'
+    })
+    const sharedBlock = createBlock(sharedMessage.id)
+
+    const remoteState = preparePortableSyncState(
+      {
+        topics: [remoteTopic],
+        messages: [sharedMessage],
+        messageBlocks: [sharedBlock]
+      },
+      remoteStorage
+    )
+    const localState = bootstrapPortableSyncState(
+      {
+        topics: [localTopic],
+        messages: [sharedMessage],
+        messageBlocks: [sharedBlock]
+      },
+      toPortableSyncMetadata(remoteState),
+      localStorage
+    )
+
+    const result = resolvePortableSyncSnapshot({
+      currentTopics: [localTopic],
+      incomingTopics: [remoteTopic],
+      currentMessages: [sharedMessage],
+      incomingMessages: [sharedMessage],
+      currentMessageBlocks: [sharedBlock],
+      incomingMessageBlocks: [sharedBlock],
+      localState,
+      incomingSync: toPortableSyncMetadata(remoteState),
+      preferIncomingOnEqualVersion: true
+    })
+
+    expect(result.topics).toEqual([expect.objectContaining({ id: 'shared-topic', name: 'desktop newer title' })])
+  })
+
   it('seeds restored sync lineage so later remote tombstones can delete migrated topics', () => {
     const sharedTopic = createTopic({ id: 'shared-topic', assistantId: 'default' })
     const localStorage = createMemoryStorage()

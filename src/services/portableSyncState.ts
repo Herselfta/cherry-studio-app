@@ -62,6 +62,7 @@ type ResolvePortableSyncSnapshotParams = {
   incomingMessageBlocks: MessageBlock[]
   localState: PortableSyncState
   incomingSync: PortableSyncMetadata
+  preferIncomingOnEqualVersion?: boolean
 }
 
 export type ResolvePortableSyncSnapshotResult = {
@@ -462,30 +463,23 @@ export function bootstrapPortableSyncState(
   const localOnlyMessages = snapshot.messages.filter(message => !remoteMessageIds.has(message.id))
   const localOnlyBlocks = snapshot.messageBlocks.filter(block => !remoteBlockIds.has(block.id))
 
-  reconcileVersionedSet(
-    localOnlyTopics,
-    state.entityVersions.topics,
-    state.tombstones.topics,
-    state.fingerprints.topics,
-    fingerprintTopic,
-    state
-  )
-  reconcileVersionedSet(
-    localOnlyMessages,
-    state.entityVersions.messages,
-    state.tombstones.messages,
-    state.fingerprints.messages,
-    fingerprintMessage,
-    state
-  )
-  reconcileVersionedSet(
-    localOnlyBlocks,
-    state.entityVersions.blocks,
-    state.tombstones.blocks,
-    state.fingerprints.blocks,
-    fingerprintMessageBlock,
-    state
-  )
+  for (const topic of localOnlyTopics) {
+    state.entityVersions.topics[topic.id] = nextPortableSyncVersion(state)
+    delete state.tombstones.topics[topic.id]
+    state.fingerprints.topics[topic.id] = fingerprintTopic(topic)
+  }
+
+  for (const message of localOnlyMessages) {
+    state.entityVersions.messages[message.id] = nextPortableSyncVersion(state)
+    delete state.tombstones.messages[message.id]
+    state.fingerprints.messages[message.id] = fingerprintMessage(message)
+  }
+
+  for (const block of localOnlyBlocks) {
+    state.entityVersions.blocks[block.id] = nextPortableSyncVersion(state)
+    delete state.tombstones.blocks[block.id]
+    state.fingerprints.blocks[block.id] = fingerprintMessageBlock(block)
+  }
 
   const localOnlySlots = buildPortableMessageSlots(localOnlyMessages)
   for (const [slotKey, messageId] of Object.entries(localOnlySlots)) {
@@ -726,7 +720,8 @@ export function resolvePortableSyncSnapshot({
   currentMessageBlocks,
   incomingMessageBlocks,
   localState,
-  incomingSync
+  incomingSync,
+  preferIncomingOnEqualVersion = false
 }: ResolvePortableSyncSnapshotParams): ResolvePortableSyncSnapshotResult {
   const mergedTombstones: PortableSyncEntityVersions = {
     topics: mergeVersionMaps(localState.tombstones.topics, normalizeVersionMap(incomingSync.tombstones.topics)),
@@ -750,7 +745,12 @@ export function resolvePortableSyncSnapshot({
     const localActive = Boolean(localTopic) && comparePortableSyncVersions(localVersion, tombstoneVersion) > 0
     const remoteActive = Boolean(remoteTopic) && comparePortableSyncVersions(remoteVersion, tombstoneVersion) > 0
 
-    if (localActive && (!remoteActive || comparePortableSyncVersions(localVersion, remoteVersion) >= 0)) {
+    const versionComparison = comparePortableSyncVersions(localVersion, remoteVersion)
+
+    if (
+      localActive &&
+      (!remoteActive || versionComparison > 0 || (versionComparison === 0 && !preferIncomingOnEqualVersion))
+    ) {
       topicMap.set(topicId, localTopic!)
       topicVersions[topicId] = localVersion!
       continue
