@@ -267,18 +267,33 @@ function nextPortableSyncVersion(state: PortableSyncState): PortableSyncVersion 
   }
 }
 
-function stableStringify(value: unknown): string {
+function normalizeStableValue(value: unknown, insideArray = false): unknown {
+  if (value === undefined) {
+    return insideArray ? null : undefined
+  }
+
   if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value)
+    return value
   }
 
   if (Array.isArray(value)) {
-    return `[${value.map(item => stableStringify(item)).join(',')}]`
+    return value.map(item => normalizeStableValue(item, true))
   }
 
   const record = value as Record<string, unknown>
-  const keys = Object.keys(record).sort()
-  return `{${keys.map(key => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`
+  return Object.fromEntries(
+    Object.keys(record)
+      .sort()
+      .flatMap(key => {
+        const normalizedValue = normalizeStableValue(record[key])
+        return normalizedValue === undefined ? [] : [[key, normalizedValue] as const]
+      })
+  )
+}
+
+function stableStringify(value: unknown): string {
+  const normalizedValue = normalizeStableValue(value)
+  return JSON.stringify(normalizedValue === undefined ? null : normalizedValue)
 }
 
 function fingerprintTopic(topic: Topic) {

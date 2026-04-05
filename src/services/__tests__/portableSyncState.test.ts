@@ -1,5 +1,11 @@
 import type { Topic } from '@/types/assistant'
-import { AssistantMessageStatus, type Message, MessageBlockStatus, MessageBlockType } from '@/types/message'
+import {
+  AssistantMessageStatus,
+  type Message,
+  type MessageBlock,
+  MessageBlockStatus,
+  MessageBlockType
+} from '@/types/message'
 
 import { MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY } from '../mobileSyncLedger'
 import {
@@ -90,6 +96,22 @@ function createBlock(messageId: string, id = `block:${messageId}`) {
     content: 'content',
     createdAt: Date.now()
   }
+}
+
+function stripUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map(item => stripUndefinedDeep(item)) as T
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).flatMap(([key, childValue]) =>
+        childValue === undefined ? [] : [[key, stripUndefinedDeep(childValue)]]
+      )
+    ) as T
+  }
+
+  return value
 }
 
 describe('portableSyncState', () => {
@@ -402,6 +424,105 @@ describe('portableSyncState', () => {
 
     expect(result.topics).toEqual([])
     expect(result.deletedTopicIds).toEqual([])
+  })
+
+  it('treats omitted optional fields as the same fingerprint when merging newer remote edits', () => {
+    const localStorage = createMemoryStorage()
+    localStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'mobile-a')
+    const remoteStorage = createMemoryStorage()
+    remoteStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'desktop-b')
+
+    const baseTopic = createTopic({ id: 'shared-topic', assistantId: 'default' })
+    const baseMessage = {
+      ...createMessage({
+        id: 'shared-message',
+        assistantId: 'default',
+        topicId: baseTopic.id,
+        content: 'original content'
+      }),
+      modelId: undefined,
+      mentions: undefined
+    } satisfies Message
+    const baseBlock = {
+      ...createBlock(baseMessage.id, 'shared-block'),
+      content: 'original block',
+      updatedAt: undefined,
+      file: undefined
+    } satisfies MessageBlock
+
+    preparePortableSyncState(
+      {
+        topics: [baseTopic],
+        messages: [baseMessage],
+        messageBlocks: [baseBlock]
+      },
+      localStorage
+    )
+
+    preparePortableSyncState(
+      {
+        topics: [stripUndefinedDeep(baseTopic)],
+        messages: [stripUndefinedDeep(baseMessage)],
+        messageBlocks: [stripUndefinedDeep(baseBlock)]
+      },
+      remoteStorage
+    )
+
+    const remoteTopic = createTopic({
+      ...stripUndefinedDeep(baseTopic),
+      name: 'desktop renamed topic',
+      updatedAt: Date.now() + 3000
+    })
+    const remoteMessage = createMessage({
+      ...stripUndefinedDeep(baseMessage),
+      content: 'desktop newer content',
+      updatedAt: Date.now() + 3000
+    })
+    const remoteBlock = {
+      ...stripUndefinedDeep(baseBlock),
+      content: 'desktop newer block',
+      updatedAt: Date.now() + 3000
+    } satisfies MessageBlock
+    const remoteState = preparePortableSyncState(
+      {
+        topics: [remoteTopic],
+        messages: [remoteMessage],
+        messageBlocks: [remoteBlock]
+      },
+      remoteStorage
+    )
+
+    const currentLocalTopic = stripUndefinedDeep(baseTopic)
+    const currentLocalMessage = stripUndefinedDeep(baseMessage)
+    const currentLocalBlock = stripUndefinedDeep(baseBlock)
+    const localState = preparePortableSyncState(
+      {
+        topics: [currentLocalTopic],
+        messages: [currentLocalMessage],
+        messageBlocks: [currentLocalBlock]
+      },
+      localStorage,
+      toPortableSyncMetadata(remoteState).frontier
+    )
+
+    const result = resolvePortableSyncSnapshot({
+      currentTopics: [currentLocalTopic],
+      incomingTopics: [remoteTopic],
+      currentMessages: [currentLocalMessage],
+      incomingMessages: [remoteMessage],
+      currentMessageBlocks: [currentLocalBlock],
+      incomingMessageBlocks: [remoteBlock],
+      localState,
+      incomingSync: toPortableSyncMetadata(remoteState)
+    })
+
+    expect(result.topics).toEqual([expect.objectContaining({ id: 'shared-topic', name: 'desktop renamed topic' })])
+    expect(result.messages).toEqual([
+      expect.objectContaining({ id: 'shared-message', content: 'desktop newer content' })
+    ])
+    expect(result.messageBlocks).toEqual([
+      expect.objectContaining({ id: 'shared-block', content: 'desktop newer block' })
+    ])
   })
 
   it('keeps only the latest assistant slot winner across replicas', () => {
