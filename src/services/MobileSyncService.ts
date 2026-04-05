@@ -32,6 +32,7 @@ import {
   bootstrapPortableSyncState,
   hasPortableSyncHistory,
   type PortableSyncMetadata,
+  type PortableSyncVersion,
   preparePortableSyncState,
   readPortableSyncState,
   resolvePortableSyncSnapshot,
@@ -224,6 +225,33 @@ export function isMobileSyncRemoteFile(fileName: string): boolean {
   return fileName.includes(MOBILE_SYNC_FILE_MARKER) && fileName.endsWith('.json')
 }
 
+function formatPortableSyncVersion(version?: PortableSyncVersion) {
+  return version ? `${version.replicaId}:${version.lamport}` : 'none'
+}
+
+function previewPortableValue(value: unknown) {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  return value.length > 80 ? `${value.slice(0, 77)}...` : value
+}
+
+function buildPortableSyncExportSamples<T extends { id: string }>(
+  items: T[],
+  versionMap: Record<string, PortableSyncVersion | undefined>,
+  tombstones: Record<string, PortableSyncVersion | undefined>,
+  summarize: (item: T) => Record<string, unknown>,
+  limit = 8
+) {
+  return items.slice(0, limit).map(item => ({
+    id: item.id,
+    version: formatPortableSyncVersion(versionMap[item.id]),
+    tombstone: formatPortableSyncVersion(tombstones[item.id]),
+    ...summarize(item)
+  }))
+}
+
 export async function exportMobileSyncPayload(): Promise<string> {
   const [providers, websearchProviders, externalAssistants, topics, messages, messageBlocks] = await Promise.all([
     providerDatabase.getAllProviders(),
@@ -278,7 +306,42 @@ export async function exportMobileSyncPayload(): Promise<string> {
     normalizedMessageCount: normalizedMessages.length,
     rawBlockCount: messageBlocks.length,
     normalizedBlockCount: normalizedMessageBlocks.length,
-    portableImageAssetCount: portableImageAssets.length
+    portableImageAssetCount: portableImageAssets.length,
+    topicSamples: buildPortableSyncExportSamples(
+      normalizedTopics,
+      portableSyncState.entityVersions.topics,
+      portableSyncState.tombstones.topics,
+      topic => ({
+        name: topic.name,
+        assistantId: topic.assistantId,
+        updatedAt: topic.updatedAt
+      })
+    ),
+    messageSamples: buildPortableSyncExportSamples(
+      normalizedMessages,
+      portableSyncState.entityVersions.messages,
+      portableSyncState.tombstones.messages,
+      message => ({
+        topicId: message.topicId,
+        role: message.role,
+        updatedAt: message.updatedAt,
+        content: previewPortableValue((message as Message & { content?: string }).content)
+      })
+    ),
+    blockSamples: buildPortableSyncExportSamples(
+      normalizedMessageBlocks,
+      portableSyncState.entityVersions.blocks,
+      portableSyncState.tombstones.blocks,
+      block => ({
+        messageId: block.messageId,
+        type: block.type,
+        updatedAt: block.updatedAt,
+        content: previewPortableValue((block as MessageBlock & { content?: string }).content)
+      })
+    ),
+    tombstoneTopicIds: Object.keys(portableSyncState.tombstones.topics).slice(0, 8),
+    tombstoneMessageIds: Object.keys(portableSyncState.tombstones.messages).slice(0, 8),
+    tombstoneBlockIds: Object.keys(portableSyncState.tombstones.blocks).slice(0, 8)
   })
 
   const { defaultAssistant: syncDefaultAssistant, assistants: syncAssistants } = buildMobileSyncAssistantPayload({
