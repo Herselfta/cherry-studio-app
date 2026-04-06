@@ -1,6 +1,6 @@
 import { loggerService } from '@/services/LoggerService'
 import type { Topic } from '@/types/assistant'
-import { type Message, type MessageBlock,MessageBlockType } from '@/types/message'
+import { type Message, type MessageBlock, MessageBlockType } from '@/types/message'
 import { storage } from '@/utils'
 
 import { getOrCreateMobileSyncSourceDeviceId, type MobileSyncStorage } from './mobileSyncLedger'
@@ -8,6 +8,7 @@ import { getOrCreateMobileSyncSourceDeviceId, type MobileSyncStorage } from './m
 const logger = loggerService.withContext('PortableSyncState')
 
 export const PORTABLE_SYNC_STATE_STORAGE_KEY = 'portable_sync_state_v3'
+export const PORTABLE_SYNC_FINGERPRINT_VERSION = 2
 
 export type PortableSyncVersion = {
   replicaId: string
@@ -44,6 +45,7 @@ type PortableSyncFingerprints = {
 }
 
 export type PortableSyncState = PortableSyncMetadata & {
+  fingerprintVersion: number
   fingerprints: PortableSyncFingerprints
 }
 
@@ -104,6 +106,7 @@ function createEmptyPortableSyncState(replicaId: string): PortableSyncState {
     entityVersions: createEmptyEntityVersions(),
     messageSlots: {},
     tombstones: createEmptyEntityVersions(),
+    fingerprintVersion: PORTABLE_SYNC_FINGERPRINT_VERSION,
     fingerprints: createEmptyFingerprints()
   }
 }
@@ -210,6 +213,7 @@ export function readPortableSyncState(targetStorage: MobileSyncStorage = storage
       entityVersions: normalizeEntityVersions(parsed.entityVersions),
       messageSlots: normalizeMessageSlots(parsed.messageSlots),
       tombstones: normalizeEntityVersions(parsed.tombstones),
+      fingerprintVersion: typeof parsed.fingerprintVersion === 'number' ? parsed.fingerprintVersion : 0,
       fingerprints: normalizeFingerprints(parsed.fingerprints)
     }
   } catch (error) {
@@ -466,6 +470,7 @@ function cloneState(state: PortableSyncState): PortableSyncState {
     entityVersions: normalizeEntityVersions(state.entityVersions),
     messageSlots: normalizeMessageSlots(state.messageSlots),
     tombstones: normalizeEntityVersions(state.tombstones),
+    fingerprintVersion: state.fingerprintVersion,
     fingerprints: normalizeFingerprints(state.fingerprints)
   }
 }
@@ -483,6 +488,7 @@ function createPortableSyncStateFromMetadata(
     entityVersions: normalizeEntityVersions(incomingSync.entityVersions),
     messageSlots: normalizeMessageSlots(incomingSync.messageSlots),
     tombstones: normalizeEntityVersions(incomingSync.tombstones),
+    fingerprintVersion: PORTABLE_SYNC_FINGERPRINT_VERSION,
     fingerprints: createEmptyFingerprints()
   }
   const activeTopicIds = new Set(
@@ -528,6 +534,25 @@ function createPortableSyncStateFromMetadata(
   }
 
   return nextState
+}
+
+function migratePortableSyncFingerprints(state: PortableSyncState, snapshot: PortableSyncSnapshot) {
+  if (state.fingerprintVersion >= PORTABLE_SYNC_FINGERPRINT_VERSION) {
+    return state
+  }
+
+  const currentSlots = buildPortableMessageSlots(snapshot.messages)
+
+  return {
+    ...state,
+    fingerprintVersion: PORTABLE_SYNC_FINGERPRINT_VERSION,
+    fingerprints: {
+      topics: Object.fromEntries(snapshot.topics.map(topic => [topic.id, fingerprintTopic(topic)])),
+      messages: Object.fromEntries(snapshot.messages.map(message => [message.id, fingerprintMessage(message)])),
+      blocks: Object.fromEntries(snapshot.messageBlocks.map(block => [block.id, fingerprintMessageBlock(block)])),
+      messageSlots: currentSlots
+    }
+  }
 }
 
 export function seedPortableSyncState(
@@ -631,7 +656,7 @@ export function preparePortableSyncState(
   targetStorage: MobileSyncStorage = storage,
   incomingFrontier?: Record<string, number>
 ): PortableSyncState {
-  const state = cloneState(readPortableSyncState(targetStorage))
+  const state = migratePortableSyncFingerprints(cloneState(readPortableSyncState(targetStorage)), snapshot)
 
   // Advance the local Lamport clock to incorporate the incoming device's frontier BEFORE
   // computing new entity versions or tombstones. Without this, locally-deleted topics get

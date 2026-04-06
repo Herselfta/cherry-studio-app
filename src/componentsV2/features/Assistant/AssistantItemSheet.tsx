@@ -17,7 +17,7 @@ import { useCurrentTopic } from '@/hooks/useTopic'
 import { assistantService } from '@/services/AssistantService'
 import { topicService } from '@/services/TopicService'
 import type { Assistant } from '@/types/assistant'
-import { storage,uuid } from '@/utils'
+import { storage, uuid } from '@/utils'
 import { isIOS, isIOS26 } from '@/utils/device'
 import { formateEmoji } from '@/utils/formats'
 

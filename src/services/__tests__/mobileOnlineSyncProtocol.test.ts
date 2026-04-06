@@ -5,7 +5,8 @@ import {
   markMobileOnlineSyncChangesPublished,
   MOBILE_ONLINE_SYNC_PROFILE_ID,
   type MobileOnlineSyncSnapshot,
-  prepareMobileOnlineSyncState} from '@/services/mobileOnlineSyncProtocol'
+  prepareMobileOnlineSyncState
+} from '@/services/mobileOnlineSyncProtocol'
 
 function createSnapshot(overrides?: Partial<MobileOnlineSyncSnapshot>): MobileOnlineSyncSnapshot {
   return {

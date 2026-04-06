@@ -25,7 +25,8 @@ import {
   type MobileOnlineSyncMessageBlock,
   type MobileOnlineSyncSnapshot,
   type MobileOnlineSyncTopic,
-  prepareMobileOnlineSyncState} from './mobileOnlineSyncProtocol'
+  prepareMobileOnlineSyncState
+} from './mobileOnlineSyncProtocol'
 import { buildMobileSyncAssistantPayload } from './mobileSyncUtils'
 import { topicService } from './TopicService'
 

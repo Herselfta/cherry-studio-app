@@ -37,7 +37,7 @@ import { storage } from '@/utils'
 import { resetAppInitializationState, runAppDataMigrations } from './AppInitializationService'
 import { assistantService } from './AssistantService'
 import { deleteFiles, writeBase64File } from './FileService'
-import { type PortableSyncMetadata,seedPortableSyncState } from './portableSyncState'
+import { type PortableSyncMetadata, seedPortableSyncState } from './portableSyncState'
 import { providerService } from './ProviderService'
 import { topicService } from './TopicService'
 import {
@@ -116,15 +116,15 @@ function isPortableImageAsset(value: unknown): value is PortableImageAsset {
 function isPortableSyncMetadata(value: unknown): value is PortableSyncMetadata {
   return Boolean(
     value &&
-      typeof value === 'object' &&
-      typeof (value as PortableSyncMetadata).replicaId === 'string' &&
-      typeof (value as PortableSyncMetadata).lamport === 'number' &&
-      (value as PortableSyncMetadata).frontier &&
-      typeof (value as PortableSyncMetadata).frontier === 'object' &&
-      (value as PortableSyncMetadata).entityVersions &&
-      typeof (value as PortableSyncMetadata).entityVersions === 'object' &&
-      (value as PortableSyncMetadata).tombstones &&
-      typeof (value as PortableSyncMetadata).tombstones === 'object'
+    typeof value === 'object' &&
+    typeof (value as PortableSyncMetadata).replicaId === 'string' &&
+    typeof (value as PortableSyncMetadata).lamport === 'number' &&
+    (value as PortableSyncMetadata).frontier &&
+    typeof (value as PortableSyncMetadata).frontier === 'object' &&
+    (value as PortableSyncMetadata).entityVersions &&
+    typeof (value as PortableSyncMetadata).entityVersions === 'object' &&
+    (value as PortableSyncMetadata).tombstones &&
+    typeof (value as PortableSyncMetadata).tombstones === 'object'
   )
 }
 
@@ -839,7 +839,9 @@ export function transformBackupData(data: string): {
           assistantId: reduxTopic?.assistantId ?? 'default',
           name: reduxTopic?.name ?? 'Untitled Topic',
           createdAt: parseTimestamp(reduxTopic?.createdAt, Date.now()),
-          updatedAt: reduxTopic?.updatedAt ? parseTimestamp(reduxTopic.updatedAt, Date.now()) : parseTimestamp(reduxTopic?.createdAt, Date.now()),
+          updatedAt: reduxTopic?.updatedAt
+            ? parseTimestamp(reduxTopic.updatedAt, Date.now())
+            : parseTimestamp(reduxTopic?.createdAt, Date.now()),
           isLoading: reduxTopic?.isLoading ?? false
         } as Topic
       })

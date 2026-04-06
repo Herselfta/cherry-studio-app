@@ -1,4 +1,4 @@
-import { asc,count, eq, sql } from 'drizzle-orm'
+import { asc, count, eq, sql } from 'drizzle-orm'
 
 import { loggerService } from '@/services/LoggerService'
 import type { Message } from '@/types/message'

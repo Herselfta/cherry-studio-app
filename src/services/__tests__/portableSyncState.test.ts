@@ -10,6 +10,7 @@ import {
 import { MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY } from '../mobileSyncLedger'
 import {
   bootstrapPortableSyncState,
+  PORTABLE_SYNC_STATE_STORAGE_KEY,
   preparePortableSyncState,
   resolvePortableSyncSnapshot,
   seedPortableSyncState,
@@ -17,6 +18,7 @@ import {
 } from '../portableSyncState'
 
 const mockModuleStorageState = new Map<string, string>()
+const FIXED_TIMESTAMP = 1_775_462_400_000
 
 jest.mock('@/services/LoggerService', () => ({
   loggerService: {
@@ -67,8 +69,8 @@ function createTopic(overrides: Partial<Topic> & Pick<Topic, 'id' | 'assistantId
     id: overrides.id,
     assistantId: overrides.assistantId,
     name: overrides.name || overrides.id,
-    createdAt: overrides.createdAt || Date.now(),
-    updatedAt: overrides.updatedAt || Date.now(),
+    createdAt: overrides.createdAt || FIXED_TIMESTAMP,
+    updatedAt: overrides.updatedAt || FIXED_TIMESTAMP,
     ...overrides
   }
 }
@@ -79,7 +81,7 @@ function createMessage(overrides: Partial<Message> & Pick<Message, 'id' | 'assis
     assistantId: overrides.assistantId,
     topicId: overrides.topicId,
     role: 'assistant',
-    createdAt: overrides.createdAt || Date.now(),
+    createdAt: overrides.createdAt || FIXED_TIMESTAMP,
     updatedAt: overrides.updatedAt,
     status: AssistantMessageStatus.SUCCESS,
     blocks: [],
@@ -94,7 +96,7 @@ function createBlock(messageId: string, id = `block:${messageId}`) {
     type: MessageBlockType.MAIN_TEXT,
     status: MessageBlockStatus.SUCCESS,
     content: 'content',
-    createdAt: Date.now()
+    createdAt: FIXED_TIMESTAMP
   }
 }
 
@@ -809,6 +811,43 @@ describe('portableSyncState', () => {
       },
       storage
     )
+
+    expect(secondState.entityVersions.topics['shared-topic']).toEqual(firstState.entityVersions.topics['shared-topic'])
+    expect(secondState.entityVersions.messages['shared-message']).toEqual(
+      firstState.entityVersions.messages['shared-message']
+    )
+    expect(secondState.entityVersions.blocks['shared-block']).toEqual(firstState.entityVersions.blocks['shared-block'])
+  })
+
+  it('migrates legacy fingerprint state without inflating tracked versions', () => {
+    const targetStorage = createMemoryStorage()
+    targetStorage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'mobile-b')
+
+    const snapshot = {
+      topics: [createTopic({ id: 'shared-topic', assistantId: 'default', name: 'shared' })],
+      messages: [
+        createMessage({
+          id: 'shared-message',
+          assistantId: 'default',
+          topicId: 'shared-topic',
+          blocks: ['shared-block']
+        })
+      ],
+      messageBlocks: [createBlock('shared-message', 'shared-block')]
+    }
+
+    const firstState = preparePortableSyncState(snapshot, targetStorage)
+    const legacyState = JSON.parse(targetStorage.getString(PORTABLE_SYNC_STATE_STORAGE_KEY) || '{}')
+    delete legacyState.fingerprintVersion
+    legacyState.fingerprints = {
+      topics: { 'shared-topic': 'legacy-topic-fingerprint' },
+      messages: { 'shared-message': 'legacy-message-fingerprint' },
+      blocks: { 'shared-block': 'legacy-block-fingerprint' },
+      messageSlots: {}
+    }
+    targetStorage.set(PORTABLE_SYNC_STATE_STORAGE_KEY, JSON.stringify(legacyState))
+
+    const secondState = preparePortableSyncState(snapshot, targetStorage)
 
     expect(secondState.entityVersions.topics['shared-topic']).toEqual(firstState.entityVersions.topics['shared-topic'])
     expect(secondState.entityVersions.messages['shared-message']).toEqual(

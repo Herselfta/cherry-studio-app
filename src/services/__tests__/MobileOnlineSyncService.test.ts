@@ -149,9 +149,7 @@ describe('syncMobileOnline', () => {
         ok: true,
         json: async () => ({
           cursor: 1,
-          acceptedChanges: JSON.parse(
-            ((global.fetch as jest.Mock).mock.calls[0][1] as FetchRequestInit).body as string
-          )
+          acceptedChanges: JSON.parse(((global.fetch as jest.Mock).mock.calls[0][1] as FetchRequestInit).body as string)
             .changes,
           skippedChanges: []
         })
