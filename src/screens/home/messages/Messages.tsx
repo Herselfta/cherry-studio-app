@@ -42,6 +42,7 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
   const [autoScroll] = usePreference('chat.auto_scroll')
   const groupedMessages = useMemo(() => Object.entries(getGroupedMessages(messages)), [messages])
   const maintainScrollAtEnd = useMemo(() => (autoScroll ? true : false), [autoScroll])
+  const listExtraData = useMemo(() => ({ assistant, messageBlocks }), [assistant, messageBlocks])
   const legendListRef = useRef<LegendListRef | FlatList<[string, GroupedMessage[]]>>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(false)
@@ -68,7 +69,11 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
   const scrollToEnd = useCallback(
     ({ animated }: { animated: boolean }) => {
       if (legendListRef.current && groupedMessages.length > 0) {
-        legendListRef.current.scrollToOffset({ offset: 9999999, animated })
+        if (typeof (legendListRef.current as any).scrollToEnd === 'function') {
+          ;(legendListRef.current as any).scrollToEnd({ animated })
+        } else {
+          legendListRef.current.scrollToOffset({ offset: 9999999, animated })
+        }
       }
     },
     [groupedMessages.length]
@@ -86,30 +91,20 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
     }
   }, [hasMessages, listLayoutReady])
 
-  const renderMessageGroup = ({ item }: { item: [string, GroupedMessage[]] }) => {
-    return (
-      <MotiView
-        from={{
-          opacity: 0,
-          translateY: 10
-        }}
-        animate={{
-          opacity: 1,
-          translateY: 0
-        }}
-        transition={{
-          type: 'timing',
-          duration: 300,
-          delay: 100
-        }}>
-        <MessageGroup assistant={assistant} item={item} messageBlocks={messageBlocks} />
-      </MotiView>
-    )
-  }
+  const renderMessageGroup = useCallback(
+    ({ item }: { item: [string, GroupedMessage[]] }) => {
+      return <MessageGroup assistant={assistant} item={item} messageBlocks={messageBlocks} />
+    },
+    [assistant, messageBlocks]
+  )
 
   const scrollToBottom = useCallback(() => {
     if (legendListRef.current && groupedMessages.length > 0) {
-      legendListRef.current.scrollToOffset({ offset: 9999999, animated: true })
+      if (typeof (legendListRef.current as any).scrollToEnd === 'function') {
+        ;(legendListRef.current as any).scrollToEnd({ animated: true })
+      } else {
+        legendListRef.current.scrollToOffset({ offset: 9999999, animated: true })
+      }
     }
   }, [groupedMessages.length])
 
@@ -143,13 +138,17 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
           ref={legendListRef}
           showsVerticalScrollIndicator={false}
           data={groupedMessages}
-          extraData={assistant}
+          extraData={listExtraData}
           renderItem={renderMessageGroup}
           keyExtractor={([key, group]) => `${key}-${group[0]?.id}`}
           ItemSeparatorComponent={() => <YStack className="h-5" />}
           contentContainerStyle={{
-            flexGrow: 1
+            paddingBottom: 20
           }}
+          removeClippedSubviews={false}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={11}
           onScroll={handleScroll}
           onContentSizeChange={handleContentSizeChange}
           scrollEventThrottle={16}
@@ -162,12 +161,12 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
           ref={legendListRef}
           showsVerticalScrollIndicator={false}
           data={groupedMessages}
-          extraData={assistant}
+          extraData={listExtraData}
           renderItem={renderMessageGroup}
           keyExtractor={([key, group]) => `${key}-${group[0]?.id}`}
           ItemSeparatorComponent={() => <YStack className="h-5" />}
           contentContainerStyle={{
-            flexGrow: 1
+            paddingBottom: 20
           }}
           onScroll={handleScroll}
           scrollEventThrottle={16}
