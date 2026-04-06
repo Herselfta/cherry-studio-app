@@ -515,6 +515,11 @@ export async function exportMobileSyncPayload(): Promise<string> {
     }
   }
 
+  // Write state so subsequent exports assign strictly monotonically-increasing clock versions
+  // to future changes, rather than continuously resetting backwards to the current lamport.
+  writePortableSyncState(portableSyncState)
+  logger.info(`Persisted mobile sync export state at lamport ${portableSyncState.lamport}`)
+
   // Cross-device sync only carries the subset that both apps understand.
   // Keep it separate from full backup/restore so importing phone data on desktop
   // cannot wipe desktop-only state during future upstream backup refactors.
