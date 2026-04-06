@@ -260,6 +260,75 @@ function stringifyPortableSyncDebug(value: unknown) {
   }
 }
 
+function summarizePortableSyncMetadata(sync?: PortableSyncMetadata) {
+  if (!sync) {
+    return null
+  }
+
+  return {
+    replicaId: sync.replicaId,
+    lamport: sync.lamport,
+    frontier: Object.entries(sync.frontier || {})
+      .slice(0, 8)
+      .map(([replicaId, lamport]) => ({ replicaId, lamport })),
+    topicVersionCount: Object.keys(sync.entityVersions.topics || {}).length,
+    messageVersionCount: Object.keys(sync.entityVersions.messages || {}).length,
+    blockVersionCount: Object.keys(sync.entityVersions.blocks || {}).length,
+    topicTombstoneCount: Object.keys(sync.tombstones.topics || {}).length,
+    messageTombstoneCount: Object.keys(sync.tombstones.messages || {}).length,
+    blockTombstoneCount: Object.keys(sync.tombstones.blocks || {}).length,
+    messageSlotCount: Object.keys(sync.messageSlots || {}).length,
+    topicTombstoneIds: Object.keys(sync.tombstones.topics || {}).slice(0, 8),
+    messageTombstoneIds: Object.keys(sync.tombstones.messages || {}).slice(0, 8),
+    blockTombstoneIds: Object.keys(sync.tombstones.blocks || {}).slice(0, 8)
+  }
+}
+
+function summarizeMobileAssistants(assistants: Assistant[]) {
+  return {
+    assistantCount: assistants.length,
+    assistantPreview: assistants.slice(0, 8).map(assistant => ({
+      id: assistant.id,
+      type: assistant.type,
+      topicCount: assistant.topics?.length || 0,
+      topicPreview: (assistant.topics || []).slice(0, 3).map(topic => ({
+        id: topic.id,
+        name: topic.name,
+        assistantId: topic.assistantId,
+        updatedAt: topic.updatedAt
+      }))
+    }))
+  }
+}
+
+function summarizeMobileConversationSnapshot(topics: Topic[], messages: Message[], messageBlocks: MessageBlock[]) {
+  return {
+    topicCount: topics.length,
+    messageCount: messages.length,
+    blockCount: messageBlocks.length,
+    topicPreview: topics.slice(0, 8).map(topic => ({
+      id: topic.id,
+      name: topic.name,
+      assistantId: topic.assistantId,
+      updatedAt: topic.updatedAt
+    })),
+    messagePreview: messages.slice(0, 8).map(message => ({
+      id: message.id,
+      topicId: message.topicId,
+      role: message.role,
+      updatedAt: message.updatedAt,
+      content: previewPortableValue((message as Message & { content?: string }).content)
+    })),
+    blockPreview: messageBlocks.slice(0, 8).map(block => ({
+      id: block.id,
+      messageId: block.messageId,
+      type: block.type,
+      updatedAt: block.updatedAt,
+      content: previewPortableValue((block as MessageBlock & { content?: string }).content)
+    }))
+  }
+}
+
 export async function exportMobileSyncPayload(): Promise<string> {
   const [providers, websearchProviders, externalAssistants, topics, messages, messageBlocks] = await Promise.all([
     providerDatabase.getAllProviders(),
@@ -302,6 +371,14 @@ export async function exportMobileSyncPayload(): Promise<string> {
   const normalizedMessageIds = new Set(normalizedMessages.map(message => message.id))
   const normalizedMessageBlocks = messageBlocks.filter(block => normalizedMessageIds.has(block.messageId))
   const portableImageAssets = collectPortableSyncImageAssets(normalizedMessageBlocks, readBase64File)
+  logger.info(
+    `Mobile sync export source snapshot ${stringifyPortableSyncDebug({
+      assistants: summarizeMobileAssistants(mobileSyncAssistants),
+      database: summarizeMobileConversationSnapshot(topics, messages, messageBlocks),
+      normalized: summarizeMobileConversationSnapshot(normalizedTopics, normalizedMessages, normalizedMessageBlocks),
+      portableSync: summarizePortableSyncMetadata(toPortableSyncMetadata(portableSyncState))
+    })}`
+  )
 
   logger.info('Exporting mobile sync payload', {
     version: MOBILE_SYNC_SCHEMA_VERSION,
@@ -516,6 +593,20 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     messages: normalizedIncomingMessages,
     visibleAssistantIds: new Set(allAssistants.map(assistant => assistant.id))
   })
+  logger.info(
+    `Mobile sync import incoming snapshot ${stringifyPortableSyncDebug({
+      source: parsed.source,
+      sourceDeviceId: parsed.sourceDeviceId,
+      sourcePlatform: parsed.sourcePlatform,
+      assistants: summarizeMobileAssistants(allAssistants),
+      normalized: summarizeMobileConversationSnapshot(
+        normalizedIncomingTopics,
+        normalizedIncomingMessages,
+        restoredMessageBlocks
+      ),
+      portableSync: summarizePortableSyncMetadata(parsed.sync)
+    })}`
+  )
 
   if (
     rawIncomingMessages.length !== normalizedIncomingMessages.length ||
@@ -551,6 +642,14 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     const localSyncState = isBootstrapImport
       ? bootstrapPortableSyncState(currentSnapshot, parsed.sync!)
       : preparePortableSyncState(currentSnapshot, undefined, parsed.sync!.frontier)
+    logger.info(
+      `Mobile sync local snapshot before merge ${stringifyPortableSyncDebug({
+        snapshot: summarizeMobileConversationSnapshot(currentTopics, currentMessages, currentMessageBlocks),
+        assistants: summarizeMobileAssistants(currentAssistants),
+        portableSync: summarizePortableSyncMetadata(toPortableSyncMetadata(localSyncState)),
+        isBootstrapImport
+      })}`
+    )
 
     if (isBootstrapImport) {
       logger.info('Bootstrapped portable sync lineage from incoming mobile sync payload', {
@@ -635,6 +734,17 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     await messageBlockDatabase.upsertBlocks(resolvedConversation.messageBlocks)
     await cleanupOrphanedImportedFiles(candidateFileIds, resolvedConversation.messageBlocks)
     writePortableSyncState(resolvedConversation.syncState)
+    logger.info(
+      `Mobile sync persisted write summary ${stringifyPortableSyncDebug({
+        snapshot: summarizeMobileConversationSnapshot(
+          resolvedConversation.topics,
+          resolvedConversation.messages,
+          resolvedConversation.messageBlocks
+        ),
+        assistants: summarizeMobileAssistants(resolvedAssistants),
+        portableSync: summarizePortableSyncMetadata(toPortableSyncMetadata(resolvedConversation.syncState))
+      })}`
+    )
 
     if (resolvedConversation.deletedTopicIds.length > 0) {
       logger.info(`Deleted ${resolvedConversation.deletedTopicIds.length} topic(s) from versioned mobile sync`)
