@@ -721,4 +721,99 @@ describe('portableSyncState', () => {
     expect(result.messages.map(message => message.id).sort()).toEqual(['assistant-new', 'user-1'])
     expect(result.deletedMessageIds).toContain('assistant-old')
   })
+
+  it('ignores platform-specific fields when computing portable sync fingerprints', () => {
+    const storage = createMemoryStorage()
+    storage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'mobile-a')
+
+    const richTopic = {
+      ...createTopic({ id: 'shared-topic', assistantId: 'default' }),
+      isLoading: true
+    }
+    const portableTopic = createTopic({ id: 'shared-topic', assistantId: 'default' })
+
+    const richMessage = {
+      ...createMessage({
+        id: 'shared-message',
+        assistantId: 'default',
+        topicId: 'shared-topic',
+        blocks: ['shared-block'],
+        modelId: 'gpt-5'
+      }),
+      model: { id: 'gpt-5', provider: 'openai', name: 'GPT-5', group: 'default' },
+      usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+      metrics: { completion_tokens: 1, time_completion_millsec: 10 },
+      traceId: 'trace-mobile-only'
+    }
+    const portableMessage = createMessage({
+      id: 'shared-message',
+      assistantId: 'default',
+      topicId: 'shared-topic',
+      blocks: ['shared-block'],
+      modelId: 'gpt-5'
+    })
+
+    const richBlock = {
+      id: 'shared-block',
+      messageId: 'shared-message',
+      type: MessageBlockType.IMAGE,
+      status: MessageBlockStatus.SUCCESS,
+      createdAt: 1,
+      updatedAt: 2,
+      url: 'file:///mobile/private/path/image.png',
+      file: {
+        id: 'file-1',
+        name: 'image.png',
+        origin_name: 'image.png',
+        path: '/mobile/private/path/image.png',
+        size: 123,
+        ext: '.png',
+        type: 'image',
+        created_at: 1,
+        count: 1
+      }
+    }
+    const portableBlock = {
+      id: 'shared-block',
+      messageId: 'shared-message',
+      type: MessageBlockType.IMAGE,
+      status: MessageBlockStatus.SUCCESS,
+      createdAt: 1,
+      updatedAt: 2,
+      file: {
+        id: 'file-1',
+        name: 'image.png',
+        origin_name: 'image.png',
+        path: '/desktop/different/path/image.png',
+        size: 123,
+        ext: '.png',
+        type: 'image',
+        created_at: 1,
+        count: 1
+      }
+    }
+
+    const firstState = preparePortableSyncState(
+      {
+        topics: [richTopic],
+        messages: [richMessage],
+        messageBlocks: [richBlock]
+      },
+      storage
+    )
+    const secondState = preparePortableSyncState(
+      {
+        topics: [portableTopic],
+        messages: [portableMessage],
+        messageBlocks: [portableBlock]
+      },
+      storage
+    )
+
+    expect(secondState.entityVersions.topics['shared-topic']).toEqual(firstState.entityVersions.topics['shared-topic'])
+    expect(secondState.entityVersions.messages['shared-message']).toEqual(
+      firstState.entityVersions.messages['shared-message']
+    )
+    expect(secondState.entityVersions.blocks['shared-block']).toEqual(firstState.entityVersions.blocks['shared-block'])
+  })
 })

@@ -1,6 +1,6 @@
 import { loggerService } from '@/services/LoggerService'
 import type { Topic } from '@/types/assistant'
-import type { Message, MessageBlock } from '@/types/message'
+import { type Message, type MessageBlock,MessageBlockType } from '@/types/message'
 import { storage } from '@/utils'
 
 import { getOrCreateMobileSyncSourceDeviceId, type MobileSyncStorage } from './mobileSyncLedger'
@@ -297,16 +297,109 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(normalizedValue === undefined ? null : normalizedValue)
 }
 
+function normalizePortableTimestamp(value: string | number | undefined) {
+  if (typeof value === 'number') {
+    return value
+  }
+
+  if (!value) {
+    return undefined
+  }
+
+  const timestamp = new Date(value).getTime()
+  return Number.isNaN(timestamp) ? undefined : timestamp
+}
+
+function normalizePortableFileMetadata(file: Record<string, unknown> | undefined) {
+  if (!file) {
+    return undefined
+  }
+
+  return {
+    id: typeof file.id === 'string' ? file.id : undefined,
+    name: typeof file.name === 'string' ? file.name : undefined,
+    origin_name: typeof file.origin_name === 'string' ? file.origin_name : undefined,
+    size: typeof file.size === 'number' ? file.size : undefined,
+    ext: typeof file.ext === 'string' ? file.ext : undefined,
+    type: typeof file.type === 'string' ? file.type : undefined,
+    created_at: normalizePortableTimestamp(file.created_at as string | number | undefined),
+    count: typeof file.count === 'number' ? file.count : undefined,
+    tokens: typeof file.tokens === 'number' ? file.tokens : undefined
+  }
+}
+
+function toPortableTopicFingerprint(topic: Topic) {
+  return {
+    id: topic.id,
+    assistantId: topic.assistantId,
+    name: topic.name,
+    createdAt: normalizePortableTimestamp(topic.createdAt),
+    updatedAt: normalizePortableTimestamp(topic.updatedAt)
+  }
+}
+
+function toPortableMessageFingerprint(message: Message) {
+  return {
+    id: message.id,
+    role: message.role,
+    assistantId: message.assistantId,
+    topicId: message.topicId,
+    createdAt: normalizePortableTimestamp(message.createdAt),
+    updatedAt: normalizePortableTimestamp(message.updatedAt),
+    status: message.status,
+    modelId: message.modelId,
+    type: message.type,
+    useful: message.useful,
+    askId: message.askId,
+    multiModelMessageStyle: message.multiModelMessageStyle,
+    foldSelected: message.foldSelected,
+    blocks: [...message.blocks]
+  }
+}
+
+function toPortableBlockFingerprint(block: MessageBlock) {
+  const base = {
+    id: block.id,
+    messageId: block.messageId,
+    type: block.type,
+    createdAt: normalizePortableTimestamp(block.createdAt),
+    updatedAt: normalizePortableTimestamp(block.updatedAt),
+    status: block.status,
+    content: 'content' in block ? block.content : undefined,
+    language: 'language' in block ? block.language : undefined,
+    thinking_millsec: 'thinking_millsec' in block ? block.thinking_millsec : undefined,
+    sourceBlockId: 'sourceBlockId' in block ? block.sourceBlockId : undefined,
+    knowledgeBaseIds: 'knowledgeBaseIds' in block ? block.knowledgeBaseIds : undefined,
+    citationReferences: 'citationReferences' in block ? block.citationReferences : undefined,
+    toolId: 'toolId' in block ? block.toolId : undefined,
+    toolName: 'toolName' in block ? block.toolName : undefined,
+    arguments: 'arguments' in block ? block.arguments : undefined,
+    response: 'response' in block ? block.response : undefined,
+    knowledge: 'knowledge' in block ? block.knowledge : undefined,
+    error: 'error' in block ? block.error : undefined,
+    file: 'file' in block ? normalizePortableFileMetadata(block.file as Record<string, unknown> | undefined) : undefined
+  }
+
+  if (block.type === MessageBlockType.IMAGE) {
+    return {
+      ...base,
+      url: 'url' in block && !('file' in block && block.file) ? block.url : undefined
+    }
+  }
+
+  return base
+}
+
 function fingerprintTopic(topic: Topic) {
-  return stableStringify(topic)
+  return stableStringify(toPortableTopicFingerprint(topic))
 }
 
 function fingerprintMessage(message: Message) {
-  return stableStringify(message)
+  return stableStringify(toPortableMessageFingerprint(message))
 }
 
 function fingerprintMessageBlock(block: MessageBlock) {
-  return stableStringify(block)
+  return stableStringify(toPortableBlockFingerprint(block))
 }
 
 function getPortableMessageSlotKey(message: Message) {
