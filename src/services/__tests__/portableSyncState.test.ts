@@ -17,6 +17,7 @@ import {
   seedPortableSyncState,
   toPortableSyncMetadata
 } from '../portableSyncState'
+import { normalizeMobileSyncExportTopics } from '../mobileSyncUtils'
 
 const mockModuleStorageState = new Map<string, string>()
 const FIXED_TIMESTAMP = 1_775_462_400_000
@@ -73,6 +74,17 @@ function createTopic(overrides: Partial<Topic> & Pick<Topic, 'id' | 'assistantId
     createdAt: overrides.createdAt || FIXED_TIMESTAMP,
     updatedAt: overrides.updatedAt || FIXED_TIMESTAMP,
     ...overrides
+  }
+}
+
+function createAssistant(overrides: Partial<Assistant> & Pick<Assistant, 'id' | 'name'>): Assistant {
+  return {
+    prompt: '',
+    topics: [],
+    type: 'external',
+    ...overrides,
+    id: overrides.id,
+    name: overrides.name
   }
 }
 
@@ -1030,5 +1042,61 @@ describe('portableSyncState', () => {
     expect(result.deletedTopicIds).toContain('deleted-topic-small')
     expect(result.deletedMessageIds).toContain('deleted-message-small')
     expect(result.deletedBlockIds).toContain('deleted-block-small')
+  })
+
+  it('treats an emptied topic as deleted once the mobile export subset no longer includes it', () => {
+    const storage = createMemoryStorage()
+    storage.set(MOBILE_SYNC_SOURCE_DEVICE_ID_STORAGE_KEY, 'mobile-a')
+
+    const assistant = createAssistant({ id: 'default', name: 'Default', type: 'system', topics: [] })
+    const topic = createTopic({ id: 'shared-topic', assistantId: 'default' })
+    const message = createMessage({
+      id: 'shared-message',
+      assistantId: 'default',
+      topicId: topic.id,
+      role: 'user',
+      content: 'hello',
+      blocks: ['shared-block']
+    })
+    const block = {
+      ...createBlock(message.id, 'shared-block'),
+      content: 'hello'
+    } satisfies MessageBlock
+
+    const firstExportTopics = normalizeMobileSyncExportTopics({
+      assistants: [assistant],
+      topics: [topic],
+      messages: [message]
+    })
+    const firstState = preparePortableSyncState(
+      {
+        topics: firstExportTopics,
+        messages: [message],
+        messageBlocks: [block]
+      },
+      storage
+    )
+
+    const secondExportTopics = normalizeMobileSyncExportTopics({
+      assistants: [assistant],
+      topics: [topic],
+      messages: []
+    })
+    expect(secondExportTopics).toEqual([])
+
+    const secondState = preparePortableSyncState(
+      {
+        topics: secondExportTopics,
+        messages: [],
+        messageBlocks: []
+      },
+      storage
+    )
+
+    expect(firstState.entityVersions.topics['shared-topic']).toBeDefined()
+    expect(secondState.entityVersions.topics['shared-topic']).toBeUndefined()
+    expect(secondState.tombstones.topics['shared-topic']).toBeDefined()
+    expect(secondState.tombstones.messages['shared-message']).toBeDefined()
+    expect(secondState.tombstones.blocks['shared-block']).toBeDefined()
   })
 })

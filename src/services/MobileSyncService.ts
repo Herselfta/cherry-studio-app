@@ -238,6 +238,30 @@ function previewPortableValue(value: unknown) {
   return value.length > 80 ? `${value.slice(0, 77)}...` : value
 }
 
+function buildPortableSyncExportSnapshot(params: {
+  assistants: Assistant[]
+  topics: Topic[]
+  messages: Message[]
+  messageBlocks: MessageBlock[]
+}) {
+  const normalizedTopics = normalizeMobileSyncExportTopics({
+    assistants: params.assistants,
+    topics: params.topics,
+    messages: params.messages
+  })
+  const normalizedTopicIds = new Set(normalizedTopics.map(topic => topic.id))
+  const normalizedMessages = normalizePortableConversationMessages(
+    params.messages.filter(message => normalizedTopicIds.has(message.topicId))
+  )
+  const normalizedMessageIds = new Set(normalizedMessages.map(message => message.id))
+
+  return {
+    topics: normalizedTopics,
+    messages: normalizedMessages,
+    messageBlocks: params.messageBlocks.filter(block => normalizedMessageIds.has(block.messageId))
+  }
+}
+
 function buildPortableSyncExportSamples<T extends { id: string }>(
   items: T[],
   versionMap: Record<string, PortableSyncVersion | undefined>,
@@ -352,25 +376,17 @@ export async function exportMobileSyncPayload(): Promise<string> {
   const searchWithTime = await preferenceService.get('websearch.search_with_time')
   const maxResults = await preferenceService.get('websearch.max_results')
   const sourceDeviceId = getOrCreateMobileSyncSourceDeviceId()
-  const currentMessageIds = new Set(messages.map(message => message.id))
-  const portableSyncState = preparePortableSyncState({
+  const mobileSyncAssistants = defaultAssistant ? [defaultAssistant, ...externalAssistants] : externalAssistants
+  const portableSnapshot = buildPortableSyncExportSnapshot({
+    assistants: mobileSyncAssistants,
     topics,
     messages,
-    messageBlocks: messageBlocks.filter(block => currentMessageIds.has(block.messageId))
+    messageBlocks
   })
-  const activeTopicIds = new Set(Object.keys(portableSyncState.entityVersions.topics))
-  const mobileSyncAssistants = defaultAssistant ? [defaultAssistant, ...externalAssistants] : externalAssistants
-  const normalizedTopics = normalizeMobileSyncExportTopics({
-    assistants: mobileSyncAssistants,
-    messages,
-    topics
-  }).filter(topic => activeTopicIds.has(topic.id))
-  const normalizedTopicIds = new Set(normalizedTopics.map(topic => topic.id))
-  const normalizedMessages = normalizePortableConversationMessages(
-    messages.filter(message => normalizedTopicIds.has(message.topicId))
-  )
-  const normalizedMessageIds = new Set(normalizedMessages.map(message => message.id))
-  const normalizedMessageBlocks = messageBlocks.filter(block => normalizedMessageIds.has(block.messageId))
+  const portableSyncState = preparePortableSyncState(portableSnapshot)
+  const normalizedTopics = portableSnapshot.topics
+  const normalizedMessages = portableSnapshot.messages
+  const normalizedMessageBlocks = portableSnapshot.messageBlocks
   const portableImageAssets = collectPortableSyncImageAssets(normalizedMessageBlocks, readBase64File)
   logger.info(
     `Mobile sync export source snapshot ${stringifyPortableSyncDebug({
