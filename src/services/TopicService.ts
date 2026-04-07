@@ -44,7 +44,7 @@ import { t } from 'i18next'
 import { loggerService } from '@/services/LoggerService'
 import { preferenceService } from '@/services/PreferenceService'
 import type { Assistant, Topic } from '@/types/assistant'
-import { storage,uuid } from '@/utils'
+import { storage, uuid } from '@/utils'
 
 const logger = loggerService.withContext('TopicService')
 

@@ -2,7 +2,6 @@ import { assistantDatabase, messageBlockDatabase, messageDatabase, topicDatabase
 
 import { getSystemAssistants } from '@/config/assistants'
 import { ensureValidCurrentTopic } from '@/services/AppInitializationService'
-import { loggerService } from '@/services/LoggerService'
 import {
   type MobileOnlineSyncConfig,
   readMobileOnlineSyncConfig,
@@ -30,7 +29,7 @@ import {
 import { buildMobileSyncAssistantPayload } from './mobileSyncUtils'
 import { topicService } from './TopicService'
 
-const logger = loggerService.withContext('MobileOnlineSyncService')
+import { syncLogger as logger } from './MobileOnlineSyncLogger'
 type FetchRequestInit = Parameters<typeof fetch>[1]
 
 type PullResponse = {
