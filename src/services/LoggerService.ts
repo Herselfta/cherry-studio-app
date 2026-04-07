@@ -1,4 +1,5 @@
 import { File, Paths } from 'expo-file-system'
+import { Platform } from 'react-native'
 
 export type LogSourceWithContext = {
   module?: string
@@ -16,6 +17,24 @@ const LEVEL_MAP: Record<LogLevel, number> = {
   debug: 1,
   silly: 0
 }
+
+// PC Sync server url
+const SYNC_SERVER_URL = __DEV__ 
+  ? (Platform.OS === 'android' ? 'http://10.0.2.2:8099' : 'http://127.0.0.1:8099')
+  : '';
+
+// List of modules to route to the dedicated PC mobile-sync.log server
+const SYNC_MODULES = [
+  'MobileSyncService', 
+  'mobileSyncLedger', 
+  'MobileSyncLedger',
+  'portableSyncState',
+  'PortableSyncState',
+  'WebDavService',
+  'WebDavConfigService',
+  'BackupService',
+  'MobileOnlineSyncService'
+];
 
 // Use Expo's global __DEV__ variable for environment detection
 const IS_DEV = __DEV__
@@ -74,6 +93,21 @@ export class LoggerService {
   }
 
   private processLog(level: LogLevel, message: string, data: any[]): void {
+    // --- 0. Route specific modules to the PC Dev Sync Server ---
+    if (__DEV__ && SYNC_SERVER_URL && this.module && SYNC_MODULES.includes(this.module)) {
+      try {
+        const stringifiedData = data.length ? JSON.stringify(data, null, 2) : '';
+        const entry = `[${this.module}] ${message} ${stringifiedData}`;
+        fetch(SYNC_SERVER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: `[${level.toUpperCase()}] ${entry}`
+        }).catch(() => { /* mute network error to avoid breaking app */ });
+      } catch (e) {
+        // ignore fetch failures
+      }
+    }
+
     // --- 1. Console Logging ---
     const consoleLevelNumber = LEVEL_MAP[level]
 
