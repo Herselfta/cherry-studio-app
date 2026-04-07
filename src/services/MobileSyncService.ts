@@ -30,6 +30,7 @@ import {
 } from './mobileSyncUtils'
 import {
   bootstrapPortableSyncState,
+  diagnosePortableSyncVersionDrift,
   hasPortableSyncHistory,
   type PortableSyncMetadata,
   type PortableSyncVersion,
@@ -644,15 +645,33 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
     }
     const existingSyncState = readPortableSyncState()
     const isBootstrapImport = !hasPortableSyncHistory(existingSyncState)
-    const localSyncState = isBootstrapImport
+    const preparedLocalSyncState = isBootstrapImport
       ? bootstrapPortableSyncState(currentSnapshot, parsed.sync!)
       : preparePortableSyncState(currentSnapshot, undefined, parsed.sync!.frontier)
+    const lineageDrift = isBootstrapImport
+      ? undefined
+      : diagnosePortableSyncVersionDrift({
+          currentTopics,
+          incomingTopics: normalizedIncomingTopics,
+          currentMessages,
+          incomingMessages: normalizedIncomingMessages,
+          currentMessageBlocks,
+          incomingMessageBlocks: restoredMessageBlocks,
+          localState: preparedLocalSyncState,
+          incomingSync: parsed.sync!
+        })
+    const shouldRebootstrapLineage = Boolean(lineageDrift?.suspected)
+    const localSyncState = shouldRebootstrapLineage
+      ? bootstrapPortableSyncState(currentSnapshot, parsed.sync!)
+      : preparedLocalSyncState
+    const preferIncomingOnEqualVersion = isBootstrapImport || shouldRebootstrapLineage
     logger.info(
       `Mobile sync local snapshot before merge ${stringifyPortableSyncDebug({
         snapshot: summarizeMobileConversationSnapshot(currentTopics, currentMessages, currentMessageBlocks),
         assistants: summarizeMobileAssistants(currentAssistants),
         portableSync: summarizePortableSyncMetadata(toPortableSyncMetadata(localSyncState)),
-        isBootstrapImport
+        isBootstrapImport,
+        lineageDrift
       })}`
     )
 
@@ -666,6 +685,14 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       })
     }
 
+    if (shouldRebootstrapLineage && lineageDrift) {
+      logger.warn(
+        `Rebootstrapped portable sync lineage after detecting suspicious local version drift ${stringifyPortableSyncDebug(
+          lineageDrift
+        )}`
+      )
+    }
+
     const resolvedConversation = resolvePortableSyncSnapshot({
       currentTopics,
       incomingTopics: normalizedIncomingTopics,
@@ -675,7 +702,7 @@ export async function importMobileSyncPayload(payload: string, onProgress: OnPro
       incomingMessageBlocks: restoredMessageBlocks,
       localState: localSyncState,
       incomingSync: parsed.sync!,
-      preferIncomingOnEqualVersion: isBootstrapImport
+      preferIncomingOnEqualVersion
     })
     logger.info('Resolved mobile sync conversation snapshot', {
       sourceDeviceId: parsed.sourceDeviceId,
