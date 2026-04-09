@@ -7,11 +7,10 @@ import MessageContent from './MessageContent'
 
 interface MessageItemProps {
   message: Message
-  messageBlocks: Record<string, MessageBlock[]>
+  blocks: MessageBlock[]
 }
 
-const MessageItem: FC<MessageItemProps> = ({ message, messageBlocks }) => {
-  const blocks = messageBlocks[message.id] || []
+const MessageItem: FC<MessageItemProps> = ({ message, blocks }) => {
   return <MessageContent message={message} blocks={blocks} />
 }
 

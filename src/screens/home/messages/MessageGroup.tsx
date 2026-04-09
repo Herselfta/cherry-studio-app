@@ -23,7 +23,7 @@ const MessageGroup: FC<MessageGroupProps> = ({ assistant, item, messageBlocks })
   const renderUserMessage = () => {
     return (
       <View className="gap-2">
-        <MessageItem message={messagesInGroup[0]} messageBlocks={messageBlocks} />
+        <MessageItem message={messagesInGroup[0]} blocks={messageBlocks[messagesInGroup[0].id] || []} />
         <View className="items-end">
           <MessageFooter assistant={assistant} message={messagesInGroup[0]} />
         </View>
@@ -38,7 +38,7 @@ const MessageGroup: FC<MessageGroupProps> = ({ assistant, item, messageBlocks })
           <View className="px-4">
             <MessageHeader message={messagesInGroup[0]} />
           </View>
-          <MessageItem message={messagesInGroup[0]} messageBlocks={messageBlocks} />
+          <MessageItem message={messagesInGroup[0]} blocks={messageBlocks[messagesInGroup[0].id] || []} />
           {/* 输出过程中不显示footer */}
           {messagesInGroup[0].status !== AssistantMessageStatus.PROCESSING && (
             <MessageFooter assistant={assistant} message={messagesInGroup[0]} />

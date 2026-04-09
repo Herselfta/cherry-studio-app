@@ -133,51 +133,27 @@ const Messages: FC<MessagesProps> = ({ assistant, topic }) => {
 
   return (
     <View className="flex-1">
-      {Platform.OS === 'android' ? (
-        <FlatList
-          ref={legendListRef}
-          showsVerticalScrollIndicator={false}
-          data={groupedMessages}
-          extraData={listExtraData}
-          renderItem={renderMessageGroup}
-          keyExtractor={([key, group]) => `${key}-${group[0]?.id}`}
-          ItemSeparatorComponent={() => <YStack className="h-5" />}
-          contentContainerStyle={{
-            paddingBottom: 20
-          }}
-          removeClippedSubviews={false}
-          initialNumToRender={15}
-          maxToRenderPerBatch={10}
-          windowSize={11}
-          onScroll={handleScroll}
-          onContentSizeChange={handleContentSizeChange}
-          scrollEventThrottle={16}
-          keyboardShouldPersistTaps="never"
-          keyboardDismissMode="on-drag"
-          ListEmptyComponent={<WelcomeContent />}
-        />
-      ) : (
-        <LegendList
-          ref={legendListRef}
-          showsVerticalScrollIndicator={false}
-          data={groupedMessages}
-          extraData={listExtraData}
-          renderItem={renderMessageGroup}
-          keyExtractor={([key, group]) => `${key}-${group[0]?.id}`}
-          ItemSeparatorComponent={() => <YStack className="h-5" />}
-          contentContainerStyle={{
-            paddingBottom: 20
-          }}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          recycleItems
-          maintainScrollAtEnd={maintainScrollAtEnd}
-          maintainScrollAtEndThreshold={0.1}
-          keyboardShouldPersistTaps="never"
-          keyboardDismissMode="on-drag"
-          ListEmptyComponent={<WelcomeContent />}
-        />
-      )}
+      <LegendList
+        ref={legendListRef}
+        showsVerticalScrollIndicator={false}
+        data={groupedMessages}
+        extraData={listExtraData}
+        renderItem={renderMessageGroup}
+        keyExtractor={([key, group]) => `${key}-${group[0]?.id}`}
+        ItemSeparatorComponent={() => <YStack className="h-5" />}
+        contentContainerStyle={{
+          paddingBottom: 20
+        }}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        recycleItems={false}
+        estimatedItemLength={200}
+        maintainScrollAtEnd={maintainScrollAtEnd}
+        maintainScrollAtEndThreshold={0.1}
+        keyboardShouldPersistTaps="never"
+        keyboardDismissMode="on-drag"
+        ListEmptyComponent={<WelcomeContent />}
+      />
       <GradientBlurEdge visible={!isAtBottom && groupedMessages.length > 0} />
       <AnimatedBlurView
         animatedProps={blurAnimatedProps}
