@@ -164,7 +164,7 @@ function SettingItem({ title, screen, icon, specificScreen }: SettingItemProps) 
         <View className="h-10 w-10 overflow-hidden rounded-full">
           <Image
             source={icon ? { uri: icon } : require('@/assets/images/favicon.png')}
-            className="h-full w-full"
+            style={{ width: '100%', height: '100%' }}
             resizeMode="cover"
             accessibilityLabel={title}
           />

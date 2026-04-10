@@ -58,7 +58,7 @@ export default function WelcomeScreen() {
               overflow: 'hidden'
             }}
             cornerSmoothing={0.6}>
-            <Image className="h-full w-full" source={require('@/assets/images/favicon.png')} />
+            <Image style={{ width: '100%', height: '100%' }} source={require('@/assets/images/favicon.png')} />
           </FastSquircleView>
           <View className="items-center justify-center px-4">
             <View className="flex-row flex-wrap items-center justify-center">

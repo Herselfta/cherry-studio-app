@@ -2,7 +2,7 @@ import type { DrawerContentComponentProps } from '@react-navigation/drawer'
 import { Divider } from 'heroui-native'
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { View } from 'react-native'
+import { Pressable, View } from 'react-native'
 import { Uniwind } from 'uniwind'
 
 import { IconButton } from '@/componentsV2/base/IconButton'
@@ -222,18 +222,31 @@ export default function CustomDrawerContent(props: DrawerContentComponentProps) 
         <Divider />
       </YStack>
 
-      <XStack className="items-center justify-between">
-        <PressableRow className="items-center gap-2.5" onPress={handleNavigatePersonalScreen}>
-          <View className="h-12 w-12 overflow-hidden rounded-full">
-            <Image
-              className="h-full w-full"
-              resizeMode="cover"
-              source={avatar ? { uri: avatar } : require('@/assets/images/favicon.png')}
-            />
-          </View>
-          <Text className="text-base">{userName || t('common.cherry_studio')}</Text>
-        </PressableRow>
-        <XStack className="items-center gap-5 pr-4">
+      <XStack className="items-center justify-between px-4 pb-2">
+        <XStack className="flex-1 items-center gap-2.5">
+          <Pressable
+            onPress={handleNavigatePersonalScreen}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              flex: 1,
+              opacity: pressed ? 0.7 : 1
+            })}>
+            <View className="h-12 w-12 overflow-hidden rounded-full">
+              <Image
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+                source={avatar ? { uri: avatar } : require('@/assets/images/favicon.png')}
+              />
+            </View>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text className="text-base" numberOfLines={1}>
+                {userName || t('common.cherry_studio')}
+              </Text>
+            </View>
+          </Pressable>
+        </XStack>
+        <XStack className="items-center gap-5 pr-2">
           <IconButton icon={<Palette size={24} />} onPress={handleToggleTheme} />
           <IconButton icon={<Cloud size={24} />} onPress={handleNavigateCloudBackupScreen} />
           <IconButton icon={<Download size={24} />} onPress={handleNavigateBasicDataSettingsScreen} />

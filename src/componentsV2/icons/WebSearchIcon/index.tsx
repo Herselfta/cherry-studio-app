@@ -14,5 +14,5 @@ export const WebsearchProviderIcon: React.FC<WebsearchProviderIconProps> = ({ pr
 
   const iconSource = getWebSearchProviderIcon(provider.id, isDark)
 
-  return <Image className="h-5 w-5" source={iconSource} />
+  return <Image style={{ width: 20, height: 20 }} source={iconSource} />
 }

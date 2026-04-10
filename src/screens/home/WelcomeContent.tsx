@@ -19,7 +19,7 @@ const WelcomeContent = () => {
             overflow: 'hidden'
           }}
           cornerSmoothing={0.6}>
-          <Image className="h-full w-full" source={require('@/assets/images/favicon.png')} />
+          <Image style={{ width: '100%', height: '100%' }} source={require('@/assets/images/favicon.png')} />
         </FastSquircleView>
         <Text className="mt-5 text-xl font-bold">{t('chat.title')}</Text>
       </YStack>

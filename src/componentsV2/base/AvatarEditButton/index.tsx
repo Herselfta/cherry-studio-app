@@ -60,7 +60,7 @@ export function AvatarEditButton({
             {content}
           </Text>
         ) : isImageContent ? (
-          <Image source={{ uri: content }} resizeMode="cover" className="h-full w-full" />
+          <Image source={{ uri: content }} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
         ) : (
           <View
             pointerEvents="none"

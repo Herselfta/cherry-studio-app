@@ -47,8 +47,8 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({ provider, size, clas
     }, [loadIcon])
   )
 
-  const sizeClass = size ? `w-[${size}px] h-[${size}px]` : 'w-6 h-6'
-  const finalClassName = className ? `${sizeClass} ${className}` : sizeClass
+  const iconSize = size ?? 24
+  const finalClassName = className ? `rounded-full ${className}` : 'rounded-full'
 
   if (!iconUri) {
     return null
@@ -56,9 +56,9 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({ provider, size, clas
 
   return (
     <Image
-      className={`${finalClassName} rounded-full`}
+      className={finalClassName}
       source={typeof iconUri === 'string' ? { uri: iconUri } : iconUri}
-      style={size ? { width: size, height: size } : undefined}
+      style={{ width: iconSize, height: iconSize }}
     />
   )
 }

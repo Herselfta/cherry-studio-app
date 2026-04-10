@@ -62,7 +62,7 @@ export default function PersonalScreen() {
                 <XStack className="relative">
                   <View className="h-24 w-24 overflow-hidden rounded-full">
                     <Image
-                      className="h-full w-full"
+                      style={{ width: '100%', height: '100%' }}
                       resizeMode="cover"
                       source={avatar ? { uri: avatar } : require('@/assets/images/favicon.png')}
                     />
