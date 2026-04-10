@@ -1,3 +1,4 @@
+import { Image as ExpoImage } from 'expo-image'
 import { cn } from 'heroui-native'
 import React, { forwardRef } from 'react'
 import type { ImageProps as RNImageProps } from 'react-native'
@@ -7,10 +8,18 @@ export interface ImageProps extends RNImageProps {
   className?: string
 }
 
-const Image = forwardRef<RNImage, ImageProps>(({ className = '', ...rest }, ref) => {
+const Image = forwardRef<RNImage, ImageProps>(({ className = '', style, source, ...rest }, ref) => {
   const composed = cn(className)
 
-  return <RNImage ref={ref} className={composed} {...rest} />
+  return (
+    <ExpoImage
+      ref={ref as any}
+      className={composed}
+      source={source as any}
+      style={style as any}
+      {...(rest as any)}
+    />
+  )
 })
 
 Image.displayName = 'Image'

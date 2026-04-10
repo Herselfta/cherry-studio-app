@@ -16,10 +16,14 @@ export const ModelIcon: React.FC<ModelIconProps> = ({ model, size, className }) 
 
   const iconSource = getModelOrProviderIcon(model.id, model.provider, isDark)
 
-  const sizeClass = size ? `w-[${size}px] h-[${size}px]` : 'w-5 h-5'
-  const finalClassName = className ? `${sizeClass} ${className}` : sizeClass
+  const imageSize = size || 20
 
   return (
-    <Image className={finalClassName} source={iconSource} style={size ? { width: size, height: size } : undefined} />
+    <Image 
+      className={className} 
+      source={iconSource} 
+      style={{ width: imageSize, height: imageSize }} 
+      resizeMode="contain"
+    />
   )
 }
